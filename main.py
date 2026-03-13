@@ -21,7 +21,7 @@ CORS(app)
 TELEGRAM_BOT_TOKEN = os.getenv('TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
 ADMIN_CHAT_ID = "8485045964"
 REQUIRED_GROUP_ID = -1003710645728
-GROUP_LINK = "https://t.me/Nequiaxonfree"
+GROUP_LINK = "https://t.me/comunidadofficialchat"
 NUMERO_RECARGA = "3210000000"  # Número donde los usuarios envían el pago
 
 # Bot state

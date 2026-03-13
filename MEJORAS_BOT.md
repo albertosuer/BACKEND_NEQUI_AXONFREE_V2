@@ -115,7 +115,7 @@ Gestiona tus cuentas de forma rápida y segura.
 
 Para más información o soporte:
 - Telegram: @AXONDEVUI
-- Grupo: https://t.me/Nequiaxonfree
+- Grupo: https://t.me/comunidadofficialchat
 
 ---
 

@@ -222,7 +222,7 @@ docker run -p 5000:5000 nequi-bot
 ## 📞 Soporte
 
 - Telegram: @AXONDEVUI
-- Grupo: https://t.me/Nequiaxonfree
+- Grupo: https://t.me/comunidadofficialchat
 
 ## 📄 Licencia
 

@@ -11,7 +11,7 @@
 ### 1️⃣ REQUISITOS PARA USUARIOS NORMALES
 
 Para usar el bot, los usuarios deben:
-1. ✅ Unirse al grupo oficial: https://t.me/Nequiaxonfree
+1. ✅ Unirse al grupo oficial: https://t.me/comunidadofficialchat
 2. ✅ Iniciar el bot en privado: `/start`
 3. ✅ Seguir las instrucciones
 
@@ -87,7 +87,7 @@ Formato: `/nequiaxonfree NUMERO PIN SALDO`
 
 **Solución:**
 1. Hacer clic en el botón "🔗 Unirse al Grupo"
-2. Unirse al grupo: https://t.me/Nequiaxonfree
+2. Unirse al grupo: https://t.me/comunidadofficialchat
 3. Volver al bot y usar `/start` o `/crear`
 
 ### "LÍMITE DIARIO ALCANZADO"
@@ -155,7 +155,7 @@ El bot ahora tiene botones interactivos:
 
 ### Grupo Principal:
 - **ID**: -1003710645728
-- **Link**: https://t.me/Nequiaxonfree
+- **Link**: https://t.me/comunidadofficialchat
 - **Requisito**: Obligatorio para usuarios normales
 
 ### Grupo VIP:
@@ -177,7 +177,7 @@ El bot ahora tiene botones interactivos:
    - Darle permisos básicos
 
 2. **Los usuarios deben unirse al grupo**
-   - Compartir el link: https://t.me/Nequiaxonfree
+   - Compartir el link: https://t.me/comunidadofficialchat
    - Verificar que se unan
 
 3. **Activar recargas gratis (opcional)**
@@ -196,7 +196,7 @@ El bot ahora tiene botones interactivos:
 
 **Para usuarios:**
 - Telegram: @AXONDEVUI
-- Grupo: https://t.me/Nequiaxonfree
+- Grupo: https://t.me/comunidadofficialchat
 
 **Para admins:**
 - Usar `/comandosadmin` para ver todos los comandos
