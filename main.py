@@ -802,7 +802,7 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"🔗 Nuevo enlace disponible para el próximo VIP:\n"
                         f"<code>{new_invite.invite_link}</code>"
                     )
-                    send_telegram_message(admin_msg, ADMIN_CHAT_ID)
+                    send_telegram_message(admin_msg, ADMIN_PRINCIPAL_1)
                     
                     print(f"✅ Nuevo enlace VIP generado después de que {user_id} se unió")
                     
@@ -812,7 +812,7 @@ async def handle_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"Usuario {user_id} se unió pero no se pudo generar nuevo enlace.\n"
                         f"Error: {str(e)}"
                     )
-                    send_telegram_message(error_msg, ADMIN_CHAT_ID)
+                    send_telegram_message(error_msg, ADMIN_PRINCIPAL_1)
                     print(f"❌ Error generando nuevo enlace: {e}")
                 
                 # Mensaje de bienvenida al nuevo miembro VIP
@@ -1039,9 +1039,23 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
                 'created_by': user_id,
                 'created_at': created_at
             })
-            print(f"✅ Usuario {user_id} - Cuenta guardada en Firebase")
+            print(f"✅ Usuario {user_id} - Cuenta guardada en 'users'")
+            
+            # CRÍTICO: Actualizar también usuarios_app con la información completa
+            db.collection('usuarios_app').document(username).update({
+                'phone': phone,
+                'pin': str(pin),
+                'saldo': str(saldo),
+                'isActive': True,
+                'created_at': created_at,
+                'account_complete': True  # Marcar como cuenta completa
+            })
+            print(f"✅ Usuario {user_id} - usuarios_app actualizado con datos completos")
+            
         except Exception as e:
             print(f"❌ Firebase error: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return COMPLETE_ACCOUNT_STEP
     
@@ -1155,7 +1169,7 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🆔 <b>Telegram ID:</b> {user_id}
 🕐 <b>Fecha:</b> {created_at}
 """
-    send_telegram_message(admin_message, ADMIN_CHAT_ID)
+    send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
     
     await update.message.reply_text(
         f"✅ <b>¡CUENTA CREADA EXITOSAMENTE!</b>\n\n"
@@ -2046,7 +2060,7 @@ async def cmd_recargar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 📌 Para agregar el saldo usa:
 <code>/agregarsaldo {phone} {cantidad}</code>
 """
-            send_telegram_message(admin_message, ADMIN_CHAT_ID)
+            send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
             
             await update.message.reply_text(
                 f"✅ <b>SOLICITUD ENVIADA</b>\n\n"
@@ -2426,6 +2440,166 @@ async def cmd_configurargrupovip(update: Update, context: ContextTypes.DEFAULT_T
     except:
         await update.message.reply_text("❌ Chat ID inválido.")
 
+async def cmd_sincronizar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sincronizar usuarios de 'users' a 'usuarios_app' para arreglar verificación"""
+    global db
+    user_id = update.effective_user.id
+    
+    if not is_admin_principal(user_id):
+        await update.message.reply_text("❌ Solo admins principales pueden usar este comando.")
+        return
+    
+    if not db:
+        await update.message.reply_text("❌ Firebase no disponible.")
+        return
+    
+    await update.message.reply_text("🔄 Iniciando sincronización...", parse_mode='HTML')
+    
+    try:
+        # Obtener todos los usuarios de 'users'
+        users_docs = db.collection('users').stream()
+        sincronizados = 0
+        errores = 0
+        
+        for user_doc in users_docs:
+            try:
+                phone = user_doc.id
+                user_data = user_doc.to_dict()
+                username = user_data.get('name')
+                
+                if not username:
+                    print(f"⚠️ Usuario {phone} sin username, saltando...")
+                    continue
+                
+                # Verificar si ya existe en usuarios_app
+                app_doc = db.collection('usuarios_app').document(username).get()
+                
+                if app_doc.exists:
+                    # Actualizar con datos completos
+                    db.collection('usuarios_app').document(username).update({
+                        'phone': phone,
+                        'pin': user_data.get('pin'),
+                        'saldo': user_data.get('saldo'),
+                        'isActive': user_data.get('isActive', True),
+                        'created_at': user_data.get('created_at'),
+                        'account_complete': True,
+                        'synced_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                    print(f"✅ Actualizado: @{username} -> {phone}")
+                else:
+                    # Crear nuevo documento en usuarios_app
+                    db.collection('usuarios_app').document(username).set({
+                        'telegram_username': username,
+                        'telegram_id': user_data.get('created_by'),
+                        'phone': phone,
+                        'pin': user_data.get('pin'),
+                        'saldo': user_data.get('saldo'),
+                        'isActive': user_data.get('isActive', True),
+                        'created_at': user_data.get('created_at'),
+                        'account_complete': True,
+                        'synced_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                    print(f"✅ Creado: @{username} -> {phone}")
+                
+                sincronizados += 1
+                
+            except Exception as e:
+                print(f"❌ Error sincronizando {phone}: {e}")
+                errores += 1
+        
+        msg = f"""
+✅ <b>SINCRONIZACIÓN COMPLETADA</b>
+
+📊 <b>Resultados:</b>
+• Sincronizados: {sincronizados}
+• Errores: {errores}
+
+🔍 Ahora la app debería verificar usuarios correctamente.
+Usa /testverify username para probar.
+"""
+        
+        await update.message.reply_text(msg, parse_mode='HTML')
+        
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ <b>ERROR EN SINCRONIZACIÓN</b>\n\n{str(e)}",
+            parse_mode='HTML'
+        )
+
+async def cmd_testverify(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando de prueba para verificar la función de verificación"""
+    global db
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ Solo admins pueden usar este comando.")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "🧪 <b>TEST VERIFICACIÓN</b>\n\n"
+            "Usa: <code>/testverify username</code>\n"
+            "Ejemplo: <code>/testverify testuser</code>",
+            parse_mode='HTML'
+        )
+        return
+    
+    username = context.args[0].strip().replace('@', '').lower()
+    
+    msg = f"🧪 <b>TEST VERIFICACIÓN: @{username}</b>\n\n"
+    
+    if not db:
+        msg += "❌ Firebase no disponible\n"
+        await update.message.reply_text(msg, parse_mode='HTML')
+        return
+    
+    try:
+        # Test 1: Buscar en usuarios_app
+        user_app_doc = db.collection('usuarios_app').document(username).get()
+        msg += f"📋 <b>usuarios_app:</b> {'✅ Existe' if user_app_doc.exists else '❌ No existe'}\n"
+        
+        if user_app_doc.exists:
+            app_data = user_app_doc.to_dict()
+            msg += f"   • telegram_id: {app_data.get('telegram_id', 'N/A')}\n"
+            msg += f"   • phone: {app_data.get('phone', 'N/A')}\n"
+            msg += f"   • account_complete: {app_data.get('account_complete', 'N/A')}\n"
+        
+        # Test 2: Buscar en users por name
+        users_query = db.collection('users').where('name', '==', username).limit(1).stream()
+        user_found = False
+        phone = None
+        
+        for doc in users_query:
+            user_found = True
+            phone = doc.id
+            user_data = doc.to_dict()
+            msg += f"\n📱 <b>users (por name):</b> ✅ Encontrado\n"
+            msg += f"   • phone: {phone}\n"
+            msg += f"   • pin: {user_data.get('pin', 'N/A')}\n"
+            msg += f"   • saldo: {user_data.get('saldo', 'N/A')}\n"
+            msg += f"   • created_by: {user_data.get('created_by', 'N/A')}\n"
+            break
+        
+        if not user_found:
+            msg += f"\n📱 <b>users (por name):</b> ❌ No encontrado\n"
+        
+        # Test 3: Simular verificación
+        msg += f"\n🔍 <b>RESULTADO VERIFICACIÓN:</b>\n"
+        if user_app_doc.exists:
+            if phone:
+                msg += "✅ Usuario verificado correctamente\n"
+                msg += f"   • Username: @{username}\n"
+                msg += f"   • Phone: {phone}\n"
+            else:
+                msg += "⚠️ Username registrado pero sin cuenta completa\n"
+        else:
+            msg += "❌ Username no registrado en el bot\n"
+            
+    except Exception as e:
+        msg += f"\n❌ Error: {str(e)}\n"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
+
 async def cmd_diagnostico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Diagnóstico completo del sistema para debugging"""
     global db
@@ -2622,62 +2796,103 @@ def home():
 def health():
     return jsonify({'status': 'healthy', 'firebase': firebase_initialized})
 
-@app.route('/verify', methods=['POST'])      
 def verify_user():
+    global db
     try:
         data = request.get_json()
         telegram_username = data.get('username', '').strip().replace('@', '').lower()
-        
+
+        print(f"🔍 VERIFY_USER - Username solicitado: '{telegram_username}'")
+
         if not telegram_username:
             return jsonify({'success': False, 'verified': False, 'error': 'Username required'})
-        
-        if db:
+
+        if not db:
+            print(f"❌ VERIFY_USER - Firebase no disponible")
+            return jsonify({'success': False, 'verified': False, 'error': 'Firebase no disponible'})
+
+        try:
             # Buscar en usuarios_app por telegram_username
             user_app_doc = db.collection('usuarios_app').document(telegram_username).get()
-            
-            if not user_app_doc.exists:
-                return jsonify({'success': True, 'verified': False, 'message': 'Username no registrado en el bot'})
-            
-            # El usuario existe en usuarios_app, ahora buscar sus datos en users
-            # Necesitamos encontrar el documento en users que tenga este username
-            users_query = db.collection('users').where('name', '==', telegram_username).limit(1).stream()
-            user_doc = None
-            phone = None
-            
-            for doc in users_query:
-                user_doc = doc
-                phone = doc.id
-                break
-            
-            if user_doc:
-                user_info = user_doc.to_dict()
-                message = f"""
-ðŸ" <b>LOGIN EN APP</b>
+            print(f"🔍 VERIFY_USER - usuarios_app.exists: {user_app_doc.exists}")
 
-ðŸ'¤ <b>Username:</b> @{telegram_username}
-ðŸ"± <b>Número:</b> {phone}
-ðŸ'° <b>Saldo:</b> ${int(user_info.get('saldo', 0)):,}
-ðŸ• <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-ðŸŒ <b>IP:</b> {request.remote_addr}
-"""
-                send_telegram_message(message, ADMIN_CHAT_ID)
-                return jsonify({
-                    'success': True,
-                    'verified': True,
-                    'username': telegram_username,
-                    'phone': phone,
-                    'saldo': int(user_info.get('saldo', 0)),
-                    'pin': user_info.get('pin'),
-                    'isActive': user_info.get('isActive', True),
-                    'message': 'Usuario verificado'
-                })
+            if not user_app_doc.exists:
+                print(f"❌ VERIFY_USER - Username '{telegram_username}' no encontrado en usuarios_app")
+                return jsonify({'success': True, 'verified': False, 'message': 'Username no registrado en el bot'})
+
+            user_app_data = user_app_doc.to_dict()
+            print(f"🔍 VERIFY_USER - usuarios_app data: {user_app_data}")
+
+            # Verificar si la cuenta está completa (tiene phone)
+            phone = user_app_data.get('phone')
+            if not phone:
+                print(f"⚠️ VERIFY_USER - Username '{telegram_username}' sin teléfono, buscando en users...")
+
+                # Buscar en users por name (fallback)
+                users_query = db.collection('users').where('name', '==', telegram_username).limit(1).stream()
+                user_doc = None
+
+                for doc in users_query:
+                    user_doc = doc
+                    phone = doc.id
+                    break
+
+                if not user_doc:
+                    print(f"❌ VERIFY_USER - Username '{telegram_username}' no tiene cuenta completa")
+                    return jsonify({'success': True, 'verified': False, 'message': 'Username registrado pero sin cuenta completa. Usa /nequiaxonlabs en el bot'})
+
+                # Obtener datos de users
+                user_info = user_doc.to_dict()
+                print(f"🔍 VERIFY_USER - Datos de users: {user_info}")
             else:
-                return jsonify({'success': True, 'verified': False, 'message': 'Username registrado pero sin cuenta completa. Usa /nequiaxonlabs en el bot'})
-        
-        return jsonify({'success': True, 'verified': False, 'message': 'Firebase no disponible'})
+                # La cuenta está completa, usar datos de usuarios_app
+                user_info = {
+                    'pin': user_app_data.get('pin'),
+                    'saldo': user_app_data.get('saldo', '0'),
+                    'isActive': user_app_data.get('isActive', True)
+                }
+                print(f"🔍 VERIFY_USER - Usando datos de usuarios_app: {user_info}")
+
+            # Notificar login al admin
+            try:
+                message = f"""
+🔍 <b>LOGIN EN APP</b>
+
+👤 <b>Username:</b> @{telegram_username}
+📱 <b>Número:</b> {phone}
+💰 <b>Saldo:</b> ${int(user_info.get('saldo', 0)):,}
+🕐 <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+🌐 <b>IP:</b> {request.remote_addr}
+"""
+                send_telegram_message(message, ADMIN_PRINCIPAL_1)
+            except Exception as e:
+                print(f"⚠️ Error enviando notificación: {e}")
+
+            print(f"✅ VERIFY_USER - Usuario '{telegram_username}' verificado exitosamente")
+
+            return jsonify({
+                'success': True,
+                'verified': True,
+                'username': telegram_username,
+                'phone': phone,
+                'saldo': int(user_info.get('saldo', 0)),
+                'pin': user_info.get('pin'),
+                'isActive': user_info.get('isActive', True),
+                'message': 'Usuario verificado correctamente'
+            })
+
+        except Exception as e:
+            print(f"❌ Error en consulta Firebase: {e}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({'success': False, 'verified': False, 'error': f'Error de base de datos: {str(e)}'})
+
     except Exception as e:
-        print(f"Error en verify_user: {e}")
+        print(f"❌ Error general en verify_user: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/get_user/<username>', methods=['GET'])
 def get_user(username):
@@ -2786,6 +3001,8 @@ def main():
     application.add_handler(CommandHandler('listavip', cmd_listavip))
     application.add_handler(CommandHandler('statusvip', cmd_statusvip))
     application.add_handler(CommandHandler('diagnostico', cmd_diagnostico))
+    application.add_handler(CommandHandler('testverify', cmd_testverify))
+    application.add_handler(CommandHandler('sincronizar', cmd_sincronizar))
     application.add_handler(CommandHandler('regenerarenlacevip', cmd_regenerarenlacevip))
     
     print("🤖 Telegram bot started")
