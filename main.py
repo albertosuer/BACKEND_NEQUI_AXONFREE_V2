@@ -2635,7 +2635,7 @@ def main():
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))  # Detectar nuevos miembros
     application.add_handler(crear_handler)
     application.add_handler(nuevo_handler)
-    application.add_handler(CommandHandler('nequiaxonlabs', cmd_nequiaxonlabs))
+    # NOTA: /nequiaxonlabs ahora está SOLO dentro del ConversationHandler, no como comando independiente
     application.add_handler(CommandHandler('off', cmd_off))
     application.add_handler(CommandHandler('activo', cmd_activo))
     application.add_handler(CommandHandler('mantenimiento', cmd_mantenimiento))
