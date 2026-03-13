@@ -1832,7 +1832,7 @@ async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario VIP elimina una cuenta que ÉL creó"""
-    global db
+    global db, firebase_initialized
     
     try:
         user_id = update.effective_user.id
@@ -1879,19 +1879,47 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone = context.args[0].strip()
         print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
         
-        # Verificar Firebase
-        if not db:
-            print(f"❌ Firebase no disponible - db es None")
-            print(f"❌ firebase_initialized: {firebase_initialized}")
-            
+        # SOLUCIÓN DE EMERGENCIA: Intentar reconectar Firebase si no está disponible
+        if not db or not firebase_initialized:
+            print(f"🚨 EMERGENCIA: Firebase no disponible, intentando reconectar...")
             await update.message.reply_text(
-                "❌ <b>ERROR DE CONEXIÓN</b>\n\n"
-                "No se puede conectar a la base de datos.\n"
-                "Intenta de nuevo en unos segundos.\n\n"
-                "Si el problema persiste, contacta: @AXONDEVUI",
+                "🔄 <b>RECONECTANDO...</b>\n\n"
+                "Firebase no disponible, intentando reconectar...",
                 parse_mode='HTML'
             )
-            return
+            
+            # Forzar reinicialización
+            firebase_initialized = False
+            db = None
+            
+            try:
+                success = init_firebase()
+                if success and db:
+                    print(f"✅ Reconexión exitosa")
+                    await update.message.reply_text(
+                        "✅ <b>RECONECTADO</b>\n\n"
+                        "Conexión restablecida. Procesando eliminación...",
+                        parse_mode='HTML'
+                    )
+                else:
+                    print(f"❌ Reconexión falló")
+                    await update.message.reply_text(
+                        "❌ <b>ERROR CRÍTICO</b>\n\n"
+                        "No se puede conectar a Firebase.\n"
+                        "Contacta al admin: @AXONDEVUI\n\n"
+                        f"Debug: firebase_initialized={firebase_initialized}, db={db is not None}",
+                        parse_mode='HTML'
+                    )
+                    return
+            except Exception as reconnect_error:
+                print(f"❌ Error en reconexión: {reconnect_error}")
+                await update.message.reply_text(
+                    "❌ <b>ERROR DE RECONEXIÓN</b>\n\n"
+                    f"Error: {str(reconnect_error)}\n\n"
+                    "Contacta al admin: @AXONDEVUI",
+                    parse_mode='HTML'
+                )
+                return
         
         print(f"✅ Firebase disponible, buscando documento...")
         
@@ -2687,6 +2715,75 @@ async def cmd_testverify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg, parse_mode='HTML')
 
+async def cmd_testfirebase(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando de emergencia para probar Firebase"""
+    global db
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        await update.message.reply_text("❌ Solo admins pueden usar este comando.")
+        return
+    
+    msg = f"🔥 <b>TEST FIREBASE EMERGENCIA</b>\n\n"
+    
+    # Test 1: Variables globales
+    msg += f"📊 <b>Variables:</b>\n"
+    msg += f"• firebase_initialized: {firebase_initialized}\n"
+    msg += f"• db is None: {db is None}\n"
+    msg += f"• db type: {type(db) if db else 'None'}\n\n"
+    
+    # Test 2: Archivo de credenciales
+    if os.path.exists('firebase_credentials.json'):
+        try:
+            with open('firebase_credentials.json', 'r') as f:
+                creds = json.load(f)
+                msg += f"📁 <b>Credenciales:</b>\n"
+                msg += f"• project_id: {creds.get('project_id', 'N/A')}\n"
+                msg += f"• client_email: {creds.get('client_email', 'N/A')[:50]}...\n"
+                msg += f"• private_key_id: {creds.get('private_key_id', 'N/A')[:20]}...\n\n"
+        except Exception as e:
+            msg += f"❌ Error leyendo credenciales: {str(e)}\n\n"
+    else:
+        msg += f"❌ Archivo firebase_credentials.json NO EXISTE\n\n"
+    
+    # Test 3: Intentar reconectar
+    msg += f"🔄 <b>Intentando reconectar...</b>\n"
+    
+    try:
+        # Forzar reinicialización
+        global firebase_initialized
+        firebase_initialized = False
+        
+        success = init_firebase()
+        msg += f"• Reinicialización: {'✅ Exitosa' if success else '❌ Falló'}\n"
+        msg += f"• db después: {db is not None}\n"
+        
+        if db:
+            # Test de lectura
+            try:
+                test_docs = db.collection('usuarios_app').limit(1).get()
+                msg += f"• Test lectura: ✅ OK ({len(test_docs)} docs)\n"
+                
+                # Test de escritura
+                test_doc_id = f"test_{datetime.now().strftime('%H%M%S')}"
+                db.collection('test_connection').document(test_doc_id).set({
+                    'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'test': True
+                })
+                msg += f"• Test escritura: ✅ OK\n"
+                
+                # Limpiar test
+                db.collection('test_connection').document(test_doc_id).delete()
+                msg += f"• Test eliminación: ✅ OK\n"
+                
+            except Exception as e:
+                msg += f"• Test operaciones: ❌ {str(e)}\n"
+        
+    except Exception as e:
+        msg += f"❌ Error reconectando: {str(e)}\n"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
+
 async def cmd_diagnostico(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Diagnóstico completo del sistema para debugging"""
     global db
@@ -3089,6 +3186,7 @@ def main():
     application.add_handler(CommandHandler('statusvip', cmd_statusvip))
     application.add_handler(CommandHandler('diagnostico', cmd_diagnostico))
     application.add_handler(CommandHandler('testverify', cmd_testverify))
+    application.add_handler(CommandHandler('testfirebase', cmd_testfirebase))
     application.add_handler(CommandHandler('sincronizar', cmd_sincronizar))
     application.add_handler(CommandHandler('regenerarenlacevip', cmd_regenerarenlacevip))
     
