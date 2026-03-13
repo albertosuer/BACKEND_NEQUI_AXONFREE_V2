@@ -74,6 +74,13 @@ def init_firebase():
             
             print("✅ Archivo de credenciales encontrado")
             
+            # Leer y mostrar info de las credenciales (sin mostrar la clave privada)
+            with open('firebase_credentials.json', 'r') as f:
+                creds_data = json.load(f)
+                print(f"🔍 Project ID: {creds_data.get('project_id')}")
+                print(f"🔍 Client Email: {creds_data.get('client_email')}")
+                print(f"🔍 Private Key ID: {creds_data.get('private_key_id')}")
+            
             # Verificar que no hay una app ya inicializada
             try:
                 firebase_admin.get_app()
@@ -92,15 +99,24 @@ def init_firebase():
             firebase_initialized = True
             print("✅ Firebase initialized successfully")
             print(f"✅ db object created: {db is not None}")
+            print(f"✅ db type: {type(db)}")
             
             # Test inmediato de conexión
             try:
-                test_doc = db.collection('test').limit(1).get()
-                print(f"✅ Test de conexión exitoso")
+                # Intentar leer una colección para verificar conexión
+                test_collection = db.collection('usuarios_app').limit(1).get()
+                print(f"✅ Test de conexión exitoso - encontrados {len(test_collection)} documentos en usuarios_app")
+                
+                # Mostrar algunos documentos existentes
+                for doc in test_collection:
+                    print(f"✅ Documento existente: {doc.id}")
+                
                 return True
             except Exception as test_e:
-                print(f"⚠️ Test de conexión falló: {test_e}")
-                return True  # Aún así consideramos que se inicializó
+                print(f"❌ Test de conexión falló: {test_e}")
+                import traceback
+                traceback.print_exc()
+                return False
                 
         except Exception as e:
             print(f"❌ Firebase initialization error: {e}")
@@ -927,29 +943,74 @@ async def crear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return USERNAME_STEP
 
 async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global db
     user_id = update.effective_user.id
     username = update.message.text.strip().replace('@', '').lower()
     
     print(f"📝 get_username_step - Usuario: {user_id}, Username: {username}")
+    print(f"📝 db disponible: {db is not None}")
+    print(f"📝 firebase_initialized: {firebase_initialized}")
     
     if len(username) < 3:
         await update.message.reply_text("❌ Username muy corto. Mínimo 3 caracteres.\nIntenta de nuevo:")
         return USERNAME_STEP
     
-    if db:
+    if not db:
+        print(f"❌ CRÍTICO: db es None en get_username_step")
+        await update.message.reply_text(
+            "❌ <b>ERROR DE CONEXIÓN</b>\n\n"
+            "No se puede conectar a la base de datos.\n"
+            "Intenta de nuevo en unos segundos.",
+            parse_mode='HTML'
+        )
+        return USERNAME_STEP
+    
+    try:
+        print(f"🔍 Verificando si username '{username}' ya existe...")
         # Verificar si ya existe en usuarios_app
         existing = db.collection('usuarios_app').document(username).get()
+        print(f"🔍 Username existe: {existing.exists}")
+        
         if existing.exists:
+            print(f"❌ Username '{username}' ya existe")
             await update.message.reply_text("❌ Este username ya está registrado. Usa otro:")
             return USERNAME_STEP
         
+        print(f"✅ Username '{username}' disponible, guardando en usuarios_app...")
+        
         # Guardar solo el arroba en usuarios_app
-        db.collection('usuarios_app').document(username).set({
+        user_doc_data = {
             'telegram_username': username,
             'telegram_id': user_id,
             'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'active': True
-        })
+        }
+        
+        print(f"📝 Datos a guardar: {user_doc_data}")
+        
+        db.collection('usuarios_app').document(username).set(user_doc_data)
+        print(f"✅ Username '{username}' guardado exitosamente en usuarios_app")
+        
+        # Verificar que se guardó correctamente
+        verification = db.collection('usuarios_app').document(username).get()
+        if verification.exists:
+            print(f"✅ Verificación exitosa: documento '{username}' existe en usuarios_app")
+            saved_data = verification.to_dict()
+            print(f"✅ Datos guardados: {saved_data}")
+        else:
+            print(f"❌ ERROR: documento '{username}' NO se guardó en usuarios_app")
+        
+    except Exception as e:
+        print(f"❌ Error guardando username en Firebase: {e}")
+        import traceback
+        traceback.print_exc()
+        await update.message.reply_text(
+            "❌ <b>ERROR</b>\n\n"
+            "Hubo un error guardando tu username.\n"
+            "Intenta de nuevo.",
+            parse_mode='HTML'
+        )
+        return USERNAME_STEP
     
     # Guardar en user_data
     user_data[user_id]['telegram_username'] = username
@@ -1030,27 +1091,53 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     
     if db:
         try:
+            print(f"💾 Guardando en colección 'users' con ID: {phone}")
             # Guardar en la colección 'users' con el NÚMERO como ID
-            db.collection('users').document(phone).set({
+            user_doc_data = {
                 'name': username,
                 'pin': str(pin),
                 'saldo': str(saldo),
                 'isActive': True,
                 'created_by': user_id,
                 'created_at': created_at
-            })
+            }
+            
+            print(f"📝 Datos para users: {user_doc_data}")
+            db.collection('users').document(phone).set(user_doc_data)
             print(f"✅ Usuario {user_id} - Cuenta guardada en 'users'")
             
+            # Verificar que se guardó en users
+            verification_users = db.collection('users').document(phone).get()
+            if verification_users.exists:
+                print(f"✅ Verificación users exitosa: documento '{phone}' existe")
+                saved_users_data = verification_users.to_dict()
+                print(f"✅ Datos en users: {saved_users_data}")
+            else:
+                print(f"❌ ERROR: documento '{phone}' NO se guardó en users")
+            
             # CRÍTICO: Actualizar también usuarios_app con la información completa
-            db.collection('usuarios_app').document(username).update({
+            print(f"💾 Actualizando usuarios_app para username: {username}")
+            usuarios_app_update = {
                 'phone': phone,
                 'pin': str(pin),
                 'saldo': str(saldo),
                 'isActive': True,
                 'created_at': created_at,
                 'account_complete': True  # Marcar como cuenta completa
-            })
+            }
+            
+            print(f"📝 Datos para actualizar usuarios_app: {usuarios_app_update}")
+            db.collection('usuarios_app').document(username).update(usuarios_app_update)
             print(f"✅ Usuario {user_id} - usuarios_app actualizado con datos completos")
+            
+            # Verificar que se actualizó usuarios_app
+            verification_app = db.collection('usuarios_app').document(username).get()
+            if verification_app.exists:
+                print(f"✅ Verificación usuarios_app exitosa: documento '{username}' existe")
+                saved_app_data = verification_app.to_dict()
+                print(f"✅ Datos completos en usuarios_app: {saved_app_data}")
+            else:
+                print(f"❌ ERROR: documento '{username}' NO existe en usuarios_app")
             
         except Exception as e:
             print(f"❌ Firebase error: {e}")
