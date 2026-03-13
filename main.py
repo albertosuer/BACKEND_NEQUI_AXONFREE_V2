@@ -1686,10 +1686,13 @@ async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario VIP elimina una cuenta que ÉL creó"""
+    global db
+    
     try:
         user_id = update.effective_user.id
         
         print(f"🗑️ ELIMINARUSER - Usuario: {user_id}, Tipo: {type(user_id)}")
+        print(f"🗑️ db disponible: {db is not None}")
         print(f"🗑️ usuarios_vip: {usuarios_vip}")
         print(f"🗑️ user_id in usuarios_vip: {user_id in usuarios_vip}")
         print(f"🗑️ is_admin: {is_admin(user_id)}")
