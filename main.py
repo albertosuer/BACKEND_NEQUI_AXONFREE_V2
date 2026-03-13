@@ -1006,7 +1006,13 @@ async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Desactiva el bot solo para usuarios normales, VIPs siguen funcionando"""
     global bot_active
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden controlar el bot.",
+            parse_mode='HTML'
+        )
         return
     bot_active = False
     await update.message.reply_text(
@@ -1021,7 +1027,13 @@ async def cmd_activo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Activa el bot para todos"""
     global bot_active
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden controlar el bot.",
+            parse_mode='HTML'
+        )
         return
     bot_active = True
     await update.message.reply_text(
@@ -1034,7 +1046,13 @@ async def cmd_mantenimiento(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Activa modo mantenimiento para TODOS (VIPs y normales)"""
     global mantenimiento_mode
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden activar mantenimiento.",
+            parse_mode='HTML'
+        )
         return
     mantenimiento_mode = True
     await update.message.reply_text(
@@ -1050,7 +1068,13 @@ async def cmd_mantenimientoapagado(update: Update, context: ContextTypes.DEFAULT
     """Desactiva modo mantenimiento"""
     global mantenimiento_mode
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden desactivar mantenimiento.",
+            parse_mode='HTML'
+        )
         return
     mantenimiento_mode = False
     await update.message.reply_text(
@@ -1063,9 +1087,15 @@ async def cmd_mantenimientoapagado(update: Update, context: ContextTypes.DEFAULT
 async def cmd_offgroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global group_active
     user_id = update.effective_user.id
-    is_grp_admin = await is_group_admin(user_id, context)
-    if not is_admin(user_id) and not is_grp_admin:
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar grupos.",
+            parse_mode='HTML'
+        )
         return
+    
     group_active = False
     await update.message.reply_text("🔴 Bot DESACTIVADO en grupos.")
 
@@ -1073,7 +1103,13 @@ async def cmd_ongroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin activa bot solo en un grupo específico"""
     global grupo_activo_id, group_active
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar grupos.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -1322,67 +1358,92 @@ async def cmd_listaradmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def cmd_comandosadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra todos los comandos de admin organizados"""
+    """Muestra comandos de admin según permisos"""
     user_id = update.effective_user.id
     if not is_admin(user_id):
         return
     
     es_principal = is_admin_principal(user_id)
     
-    msg = "👑 <b>COMANDOS DE ADMINISTRADOR</b>\n\n"
-    
-    msg += "🤖 <b>CONTROL DEL BOT</b>\n"
-    msg += "/off - Desactivar para usuarios normales (VIPs siguen)\n"
-    msg += "/activo - Activar para todos\n"
-    msg += "/mantenimiento - Desactivar para TODOS (incluye VIPs)\n"
-    msg += "/mantenimientoapagado - Reactivar después de mantenimiento\n"
-    msg += "/offgroup - Desactivar en grupos\n"
-    msg += "/ongroup chatid - Activar solo en un grupo\n\n"
-    
-    msg += "👥 <b>GESTIÓN DE USUARIOS</b>\n"
-    msg += "/nuevo - Crear usuario directo\n"
-    msg += "/usuarios - Listar usuarios\n"
-    msg += "/eliminar numero - Eliminar usuario\n"
-    msg += "/stats - Ver estadísticas\n\n"
-    
-    msg += "💰 <b>GESTIÓN DE SALDO</b>\n"
-    msg += "/agregarsaldo numero cantidad\n"
-    msg += "/recargasgratis - Activar recargas auto\n"
-    msg += "/offrecargas - Desactivar recargas auto\n\n"
-    
-    msg += "🌟 <b>GESTIÓN VIP</b>\n"
-    msg += "/agregarvip telegram_id - Agregar VIP (notifica auto)\n"
-    msg += "/eliminarvip telegram_id\n"
-    msg += "/listavip - Ver usuarios VIP\n"
-    msg += "/statusvip - Estado backup VIP\n"
-    msg += "/regenerarenlacevip telegram_id - Crear nuevo enlace\n"
-    msg += "/agregarurlvip url - Agregar URL grupo VIP\n"
-    msg += "/actualizarurlvip url - Actualizar URL\n"
-    msg += "/configurargrupovip chatid - Config grupo VIP\n\n"
-    
-    msg += "📋 <b>GESTIÓN DE GRUPOS</b>\n"
-    msg += "/agregargrupo chatid\n"
-    msg += "/eliminargrupo chatid\n\n"
-    
-    msg += "⚙️ <b>ADMINISTRACIÓN</b>\n"
     if es_principal:
+        # ADMINS PRINCIPALES - Acceso completo
+        msg = "👑 <b>COMANDOS ADMIN PRINCIPAL</b>\n\n"
+        
+        msg += "🤖 <b>CONTROL DEL BOT</b>\n"
+        msg += "/off - Desactivar para usuarios normales\n"
+        msg += "/activo - Activar para todos\n"
+        msg += "/mantenimiento - Modo mantenimiento total\n"
+        msg += "/mantenimientoapagado - Desactivar mantenimiento\n"
+        msg += "/offgroup - Desactivar en grupos\n"
+        msg += "/ongroup chatid - Activar en grupo específico\n\n"
+        
+        msg += "👥 <b>GESTIÓN DE USUARIOS</b>\n"
+        msg += "/nuevo - Crear usuario directo\n"
+        msg += "/usuarios - Listar usuarios\n"
+        msg += "/eliminar numero - Eliminar usuario\n"
+        msg += "/stats - Ver estadísticas\n\n"
+        
+        msg += "💰 <b>GESTIÓN DE SALDO</b>\n"
+        msg += "/agregarsaldo numero cantidad\n"
+        msg += "/recargasgratis - Activar recargas auto\n"
+        msg += "/offrecargas - Desactivar recargas auto\n\n"
+        
+        msg += "🌟 <b>GESTIÓN VIP</b>\n"
+        msg += "/agregarvip telegram_id - Agregar VIP\n"
+        msg += "/eliminarvip telegram_id - Eliminar VIP\n"
+        msg += "/listavip - Ver usuarios VIP\n"
+        msg += "/statusvip - Estado backup VIP\n"
+        msg += "/regenerarenlacevip telegram_id - Regenerar enlace\n\n"
+        
+        msg += "� <b>CONFIGURACIÓN VIP</b>\n"
+        msg += "/agregarurlvip url - Agregar URL grupo VIP\n"
+        msg += "/actualizarurlvip url - Actualizar URL\n"
+        msg += "/configurargrupovip chatid - Config grupo VIP\n\n"
+        
+        msg += "📋 <b>GESTIÓN DE GRUPOS</b>\n"
+        msg += "/agregargrupo chatid - Agregar grupo\n"
+        msg += "/eliminargrupo chatid - Eliminar grupo\n\n"
+        
+        msg += "⚙️ <b>ADMINISTRACIÓN</b>\n"
         msg += "/agregaradmin telegram_id - Agregar admin secundario\n"
         msg += "/eliminaradmin telegram_id - Eliminar admin secundario\n"
-    msg += "/listaradmins - Ver lista de administradores\n"
-    msg += "/comandosadmin - Ver esta ayuda\n\n"
+        msg += "/listaradmins - Ver lista de admins\n"
+        msg += "/comandosadmin - Ver esta ayuda\n\n"
+        
+        msg += "👑 <b>Tienes acceso completo al sistema</b>"
     
-    if es_principal:
-        msg += "👑 <b>Eres Admin Principal</b> - Acceso completo"
     else:
-        msg += "🔸 <b>Eres Admin Secundario</b>\n"
-        msg += "⚠️ Cuando agregues VIPs, los admins principales serán notificados"
+        # ADMINS SECUNDARIOS - Solo gestión VIP
+        msg = "🔸 <b>COMANDOS ADMIN SECUNDARIO</b>\n\n"
+        
+        msg += "🌟 <b>GESTIÓN VIP (TU ÚNICO PERMISO)</b>\n"
+        msg += "/agregarvip telegram_id - Agregar VIP\n"
+        msg += "/eliminarvip telegram_id - Eliminar VIP\n"
+        msg += "/listavip - Ver usuarios VIP\n"
+        msg += "/statusvip - Estado backup VIP\n"
+        msg += "/regenerarenlacevip telegram_id - Regenerar enlace\n\n"
+        
+        msg += "⚙️ <b>OTROS</b>\n"
+        msg += "/listaradmins - Ver lista de admins\n"
+        msg += "/comandosadmin - Ver esta ayuda\n\n"
+        
+        msg += "⚠️ <b>IMPORTANTE:</b>\n"
+        msg += "• Solo puedes gestionar usuarios VIP\n"
+        msg += "• Cuando agregues un VIP, los admins principales serán notificados\n"
+        msg += "• NO tienes acceso a configuración de grupos, bot, usuarios o saldo\n"
+        msg += "• Para más permisos, contacta a un admin principal"
     
     await update.message.reply_text(msg, parse_mode='HTML')
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    is_grp_admin = await is_group_admin(user_id, context)
-    if not is_admin(user_id) and not is_grp_admin:
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden ver estadísticas.",
+            parse_mode='HTML'
+        )
         return
     users_count = 0
     if db:
@@ -1398,7 +1459,13 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_eliminar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin elimina un usuario por número de teléfono"""
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden eliminar usuarios.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -1458,8 +1525,13 @@ async def cmd_eliminar(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    is_grp_admin = await is_group_admin(user_id, context)
-    if not is_admin(user_id) and not is_grp_admin:
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden ver usuarios.",
+            parse_mode='HTML'
+        )
         return
     if db:
         users = list(db.collection('users').stream())
@@ -1606,8 +1678,12 @@ async def cmd_agregarsaldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Solo admin - Agregar saldo a un usuario"""
     user_id = update.effective_user.id
     
-    if not is_admin(user_id):
-        await update.message.reply_text("❌ Este comando es solo para el administrador.")
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden agregar saldo.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args or len(context.args) != 2:
@@ -1733,8 +1809,15 @@ async def cmd_recargasgratis(update: Update, context: ContextTypes.DEFAULT_TYPE)
     """Admin activa recargas gratis"""
     global recargas_gratis
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar recargas.",
+            parse_mode='HTML'
+        )
         return
+    
     recargas_gratis = True
     await update.message.reply_text("🟢 Recargas GRATIS activadas. Los usuarios pueden recargarse automáticamente.")
 
@@ -1742,8 +1825,15 @@ async def cmd_offrecargas(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin desactiva recargas gratis"""
     global recargas_gratis
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar recargas.",
+            parse_mode='HTML'
+        )
         return
+    
     recargas_gratis = False
     await update.message.reply_text("🔴 Recargas GRATIS desactivadas. Los usuarios enviarán solicitudes.")
 
@@ -1752,7 +1842,13 @@ async def cmd_offrecargas(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_agregargrupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin agrega grupo permitido"""
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar grupos.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -1773,7 +1869,13 @@ async def cmd_agregargrupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_eliminargrupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin elimina grupo permitido"""
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden gestionar grupos.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -1921,7 +2023,13 @@ async def cmd_agregarurlvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin agrega URL del grupo VIP"""
     global url_grupo_vip
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden configurar grupo VIP.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -1940,7 +2048,13 @@ async def cmd_actualizarurlvip(update: Update, context: ContextTypes.DEFAULT_TYP
     """Admin actualiza URL del grupo VIP"""
     global url_grupo_vip
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden configurar grupo VIP.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
@@ -2034,7 +2148,13 @@ async def cmd_configurargrupovip(update: Update, context: ContextTypes.DEFAULT_T
     """Admin configura el ID del grupo VIP"""
     global grupo_vip_id
     user_id = update.effective_user.id
-    if not is_admin(user_id):
+    
+    # Solo admins principales
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\nSolo admins principales pueden configurar grupo VIP.",
+            parse_mode='HTML'
+        )
         return
     
     if not context.args:
