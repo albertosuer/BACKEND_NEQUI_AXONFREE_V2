@@ -1686,38 +1686,50 @@ async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario VIP elimina una cuenta que ÉL creó"""
-    user_id = update.effective_user.id
-    
-    print(f"🗑️ ELIMINARUSER - Usuario: {user_id}")
-    
-    # Solo VIPs y admins pueden usar este comando
-    if user_id not in usuarios_vip and not is_admin(user_id):
-        print(f"❌ Usuario {user_id} - No es VIP ni admin")
-        await update.message.reply_text(
-            "❌ <b>ACCESO DENEGADO</b>\n\n"
-            "Este comando es solo para usuarios VIP.\n"
-            "Contacta: @AXONDEVUI",
-            parse_mode='HTML'
-        )
-        return
-    
-    print(f"✅ Usuario {user_id} - Es VIP o admin")
-    
-    if not context.args:
-        print(f"❌ Usuario {user_id} - Sin argumentos")
-        await update.message.reply_text(
-            "📱 <b>ELIMINAR USUARIO</b>\n\n"
-            "Usa: <code>/eliminaruser numero</code>\n"
-            "Ejemplo: <code>/eliminaruser 3001234567</code>\n\n"
-            "⚠️ Solo puedes eliminar cuentas que TÚ creaste.",
-            parse_mode='HTML'
-        )
-        return
-    
-    phone = context.args[0].strip()
-    print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
-    
-    if db:
+    try:
+        user_id = update.effective_user.id
+        
+        print(f"🗑️ ELIMINARUSER - Usuario: {user_id}")
+        print(f"🗑️ Argumentos: {context.args}")
+        
+        # Respuesta inmediata para confirmar que el comando se recibió
+        await update.message.reply_text("⏳ Procesando...", parse_mode='HTML')
+        
+        # Solo VIPs y admins pueden usar este comando
+        if user_id not in usuarios_vip and not is_admin(user_id):
+            print(f"❌ Usuario {user_id} - No es VIP ni admin")
+            await update.message.reply_text(
+                "❌ <b>ACCESO DENEGADO</b>\n\n"
+                "Este comando es solo para usuarios VIP.\n"
+                "Contacta: @AXONDEVUI",
+                parse_mode='HTML'
+            )
+            return
+        
+        print(f"✅ Usuario {user_id} - Es VIP o admin")
+        
+        if not context.args:
+            print(f"❌ Usuario {user_id} - Sin argumentos")
+            await update.message.reply_text(
+                "📱 <b>ELIMINAR USUARIO</b>\n\n"
+                "Usa: <code>/eliminaruser numero</code>\n"
+                "Ejemplo: <code>/eliminaruser 3001234567</code>\n\n"
+                "⚠️ Solo puedes eliminar cuentas que TÚ creaste.",
+                parse_mode='HTML'
+            )
+            return
+        
+        phone = context.args[0].strip()
+        print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
+        
+        if not db:
+            print(f"❌ Firebase no disponible")
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\nBase de datos no disponible.",
+                parse_mode='HTML'
+            )
+            return
+        
         try:
             # Verificar que el usuario existe
             doc = db.collection('users').document(phone).get()
@@ -1787,13 +1799,29 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             send_telegram_message(admin_msg, ADMIN_PRINCIPAL_1)
             
         except Exception as e:
-            print(f"❌ Error eliminando usuario: {e}")
+            print(f"❌ Error en Firebase: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text(
                 "❌ <b>ERROR</b>\n\n"
                 "Hubo un error al eliminar el usuario.\n"
                 "Intenta de nuevo o contacta al soporte.",
                 parse_mode='HTML'
             )
+    
+    except Exception as e:
+        print(f"❌ ERROR GENERAL en cmd_eliminaruser: {e}")
+        import traceback
+        traceback.print_exc()
+        try:
+            await update.message.reply_text(
+                "❌ <b>ERROR CRÍTICO</b>\n\n"
+                "Hubo un error inesperado.\n"
+                "Contacta al soporte: @AXONDEVUI",
+                parse_mode='HTML'
+            )
+        except:
+            pass
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario consulta su saldo"""
