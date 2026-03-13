@@ -1734,11 +1734,17 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         phone = context.args[0].strip()
         print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
+        print(f"🔍 Verificando db: {db}")
+        print(f"🔍 db is None: {db is None}")
+        print(f"🔍 firebase_initialized: {firebase_initialized}")
         
         if not db:
-            print(f"❌ Firebase no disponible")
+            print(f"❌ Firebase no disponible - db es None")
             await update.message.reply_text(
-                "❌ <b>ERROR</b>\n\nBase de datos no disponible.",
+                "❌ <b>ERROR</b>\n\n"
+                "Base de datos no disponible.\n"
+                "El bot necesita reiniciarse.\n\n"
+                "Contacta al admin: @AXONDEVUI",
                 parse_mode='HTML'
             )
             return
