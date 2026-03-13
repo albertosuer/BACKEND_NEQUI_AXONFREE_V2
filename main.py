@@ -1736,6 +1736,10 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             username = data.get('name', 'N/A')
             
             print(f"📋 Usuario {user_id} - Cuenta encontrada: {username}, creada por: {created_by}")
+            print(f"🔍 Tipos - user_id: {type(user_id)} ({user_id}), created_by: {type(created_by)} ({created_by})")
+            print(f"🔍 Comparación - str(user_id): {str(user_id)}, str(created_by): {str(created_by)}")
+            print(f"🔍 Son iguales? {str(created_by) == str(user_id)}")
+            print(f"🔍 Es admin? {is_admin(user_id)}")
             
             # Verificar que el usuario VIP sea quien lo creó (admins pueden eliminar cualquiera)
             if not is_admin(user_id) and str(created_by) != str(user_id):
@@ -1744,7 +1748,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "❌ <b>ACCESO DENEGADO</b>\n\n"
                     f"No puedes eliminar este usuario.\n"
                     f"Solo puedes eliminar cuentas que TÚ creaste.\n\n"
-                    f"Este usuario fue creado por: {created_by}",
+                    f"Este usuario fue creado por otro VIP.",
                     parse_mode='HTML'
                 )
                 return
