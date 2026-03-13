@@ -19,7 +19,9 @@ CORS(app)
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
-ADMIN_CHAT_ID = "8485045964"
+ADMIN_PRINCIPAL_1 = "8485045964"  # Admin Principal 1
+ADMIN_PRINCIPAL_2 = "8485352219"  # Admin Principal 2
+ADMINS_PRINCIPALES = {ADMIN_PRINCIPAL_1, ADMIN_PRINCIPAL_2}  # Admins que no se pueden eliminar
 REQUIRED_GROUP_ID = -1003710645728
 GROUP_LINK = "https://t.me/comunidadofficialchat"
 NUMERO_RECARGA = "3210000000"  # Número donde los usuarios envían el pago
@@ -29,13 +31,15 @@ bot_active = True
 mantenimiento_mode = False  # Modo mantenimiento para TODOS
 group_active = True
 recargas_gratis = True  # Si está True, las recargas son automáticas
-admin_ids = set([ADMIN_CHAT_ID])
+admin_ids = set([ADMIN_PRINCIPAL_1, ADMIN_PRINCIPAL_2])  # Incluye ambos admins principales
+admins_secundarios = set()  # Admins secundarios agregados dinámicamente
 grupos_permitidos = set([REQUIRED_GROUP_ID])  # Grupos donde el bot puede funcionar
 grupo_activo_id = REQUIRED_GROUP_ID  # Grupo actualmente activo
 usuarios_vip = set()  # IDs de usuarios VIP
 url_grupo_vip = "https://t.me/GrupoVIPPrivado"  # URL del grupo VIP
 grupo_vip_id = -1003875617504  # ID del grupo VIP configurado
 vip_backup_file = 'usuariosvip.json'
+admins_backup_file = 'admins_secundarios.json'
 last_vip_backup = None
 last_vip_restore = None
 
@@ -141,7 +145,41 @@ def send_telegram_message(message, chat_id=None):
         return False
 
 def is_admin(user_id):
-    return str(user_id) in admin_ids
+    """Verifica si el usuario es admin (principal o secundario)"""
+    return str(user_id) in admin_ids or str(user_id) in admins_secundarios
+
+def is_admin_principal(user_id):
+    """Verifica si el usuario es admin principal (no se puede eliminar)"""
+    return str(user_id) in ADMINS_PRINCIPALES
+
+def save_admins_to_json():
+    """Guarda admins secundarios en archivo JSON"""
+    try:
+        data = {
+            'admins_secundarios': list(admins_secundarios),
+            'last_backup': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'total': len(admins_secundarios)
+        }
+        with open(admins_backup_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        print(f"💾 Backup admins guardado: {len(admins_secundarios)} admins secundarios")
+    except Exception as e:
+        print(f"❌ Error guardando admins: {e}")
+
+def load_admins_from_json():
+    """Carga admins secundarios desde archivo JSON"""
+    global admins_secundarios
+    try:
+        if os.path.exists(admins_backup_file):
+            with open(admins_backup_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                admins_secundarios = set(data.get('admins_secundarios', []))
+                print(f"✅ Admins secundarios cargados: {len(admins_secundarios)}")
+        else:
+            save_admins_to_json()
+            print("📁 Archivo admins creado")
+    except Exception as e:
+        print(f"❌ Error cargando admins: {e}")
 
 def mensaje_bot_desactivado():
     """Mensaje cuando el bot está desactivado para usuarios normales"""
@@ -1063,14 +1101,225 @@ async def cmd_ongroup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Chat ID inválido.")
 
 async def cmd_agregaradmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
+    """Solo admins principales pueden agregar admins secundarios"""
+    user_id = update.effective_user.id
+    
+    # Solo admins principales pueden agregar otros admins
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\n"
+            "Solo los administradores principales pueden agregar otros administradores.",
+            parse_mode='HTML'
+        )
         return
+    
     if not context.args:
-        await update.message.reply_text("Uso: /agregaradmin <telegram_id>")
+        await update.message.reply_text(
+            "📌 <b>AGREGAR ADMINISTRADOR SECUNDARIO</b>\n\n"
+            "Uso: <code>/agregaradmin telegram_id</code>\n"
+            "Ejemplo: <code>/agregaradmin 123456789</code>\n\n"
+            "⚠️ Los admins secundarios pueden:\n"
+            "• Agregar usuarios VIP (con notificación a admins principales)\n"
+            "• Usar comandos de administración\n"
+            "• NO pueden agregar/eliminar otros admins",
+            parse_mode='HTML'
+        )
         return
-    new_admin_id = context.args[0]
-    admin_ids.add(new_admin_id)
-    await update.message.reply_text(f"✅ Admin agregado: {new_admin_id}")
+    
+    try:
+        new_admin_id = str(context.args[0])
+        
+        # Verificar que no sea ya admin principal
+        if new_admin_id in ADMINS_PRINCIPALES:
+            await update.message.reply_text(
+                "⚠️ Este usuario ya es administrador principal.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Verificar que no esté ya agregado
+        if new_admin_id in admins_secundarios:
+            await update.message.reply_text(
+                "⚠️ Este usuario ya es administrador secundario.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Agregar admin secundario
+        admins_secundarios.add(new_admin_id)
+        save_admins_to_json()
+        
+        # Notificar al nuevo admin
+        try:
+            await context.bot.send_message(
+                chat_id=new_admin_id,
+                text=(
+                    "🎉 <b>¡FELICIDADES!</b>\n\n"
+                    "Has sido promovido a <b>Administrador Secundario</b> del bot.\n\n"
+                    "✅ <b>Permisos:</b>\n"
+                    "• Agregar usuarios VIP\n"
+                    "• Usar comandos de administración\n"
+                    "• Gestionar usuarios\n\n"
+                    "⚠️ <b>Importante:</b>\n"
+                    "Cuando agregues un VIP, los admins principales serán notificados.\n\n"
+                    "Usa /comandosadmin para ver todos los comandos."
+                ),
+                parse_mode='HTML'
+            )
+            notificado = True
+        except:
+            notificado = False
+        
+        # Notificar a todos los admins principales
+        for admin_principal in ADMINS_PRINCIPALES:
+            if str(admin_principal) != str(user_id):  # No notificar al que lo agregó
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_principal,
+                        text=(
+                            f"👑 <b>NUEVO ADMIN SECUNDARIO</b>\n\n"
+                            f"👤 Admin que agregó: <code>{user_id}</code>\n"
+                            f"🆕 Nuevo admin: <code>{new_admin_id}</code>\n"
+                            f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        ),
+                        parse_mode='HTML'
+                    )
+                except:
+                    pass
+        
+        msg = (
+            f"✅ <b>ADMIN SECUNDARIO AGREGADO</b>\n\n"
+            f"🆔 ID: <code>{new_admin_id}</code>\n"
+            f"💾 Backup guardado\n"
+        )
+        if notificado:
+            msg += f"✉️ Usuario notificado"
+        else:
+            msg += f"⚠️ No se pudo notificar (debe iniciar el bot)"
+        
+        await update.message.reply_text(msg, parse_mode='HTML')
+        
+    except ValueError:
+        await update.message.reply_text("❌ ID inválido. Debe ser un número.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def cmd_eliminaradmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Solo admins principales pueden eliminar admins secundarios"""
+    user_id = update.effective_user.id
+    
+    # Solo admins principales pueden eliminar otros admins
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\n"
+            "Solo los administradores principales pueden eliminar administradores.",
+            parse_mode='HTML'
+        )
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "📌 <b>ELIMINAR ADMINISTRADOR SECUNDARIO</b>\n\n"
+            "Uso: <code>/eliminaradmin telegram_id</code>\n"
+            "Ejemplo: <code>/eliminaradmin 123456789</code>\n\n"
+            "⚠️ Solo se pueden eliminar admins secundarios.\n"
+            "Los admins principales no se pueden eliminar.",
+            parse_mode='HTML'
+        )
+        return
+    
+    try:
+        admin_id = str(context.args[0])
+        
+        # Verificar que no sea admin principal
+        if admin_id in ADMINS_PRINCIPALES:
+            await update.message.reply_text(
+                "❌ <b>NO SE PUEDE ELIMINAR</b>\n\n"
+                "Los administradores principales no se pueden eliminar.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Verificar que exista como admin secundario
+        if admin_id not in admins_secundarios:
+            await update.message.reply_text(
+                "❌ Este usuario no es administrador secundario.",
+                parse_mode='HTML'
+            )
+            return
+        
+        # Eliminar admin secundario
+        admins_secundarios.remove(admin_id)
+        save_admins_to_json()
+        
+        # Notificar al admin eliminado
+        try:
+            await context.bot.send_message(
+                chat_id=admin_id,
+                text=(
+                    "⚠️ <b>PERMISOS DE ADMIN REVOCADOS</b>\n\n"
+                    "Tus permisos de administrador secundario han sido revocados.\n\n"
+                    "Ya no puedes usar comandos de administración.\n\n"
+                    "Contacta a los admins principales si crees que es un error."
+                ),
+                parse_mode='HTML'
+            )
+        except:
+            pass
+        
+        # Notificar a todos los admins principales
+        for admin_principal in ADMINS_PRINCIPALES:
+            if str(admin_principal) != str(user_id):  # No notificar al que lo eliminó
+                try:
+                    await context.bot.send_message(
+                        chat_id=admin_principal,
+                        text=(
+                            f"🗑️ <b>ADMIN SECUNDARIO ELIMINADO</b>\n\n"
+                            f"👤 Admin que eliminó: <code>{user_id}</code>\n"
+                            f"❌ Admin eliminado: <code>{admin_id}</code>\n"
+                            f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                        ),
+                        parse_mode='HTML'
+                    )
+                except:
+                    pass
+        
+        await update.message.reply_text(
+            f"✅ <b>ADMIN SECUNDARIO ELIMINADO</b>\n\n"
+            f"🆔 ID: <code>{admin_id}</code>\n"
+            f"💾 Backup actualizado\n"
+            f"✉️ Usuario notificado",
+            parse_mode='HTML'
+        )
+        
+    except ValueError:
+        await update.message.reply_text("❌ ID inválido. Debe ser un número.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def cmd_listaradmins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra lista de todos los administradores"""
+    user_id = update.effective_user.id
+    
+    if not is_admin(user_id):
+        return
+    
+    msg = "👑 <b>LISTA DE ADMINISTRADORES</b>\n\n"
+    
+    msg += "🔹 <b>ADMINS PRINCIPALES:</b>\n"
+    for admin in ADMINS_PRINCIPALES:
+        msg += f"• <code>{admin}</code>\n"
+    
+    msg += f"\n🔸 <b>ADMINS SECUNDARIOS:</b> ({len(admins_secundarios)})\n"
+    if admins_secundarios:
+        for admin in admins_secundarios:
+            msg += f"• <code>{admin}</code>\n"
+    else:
+        msg += "• No hay admins secundarios\n"
+    
+    msg += f"\n📊 <b>Total:</b> {len(ADMINS_PRINCIPALES) + len(admins_secundarios)} administradores"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
 
 async def cmd_comandosadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Muestra todos los comandos de admin organizados"""
@@ -1078,47 +1327,57 @@ async def cmd_comandosadmin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(user_id):
         return
     
-    await update.message.reply_text(
-        "👑 <b>COMANDOS DE ADMINISTRADOR</b>\n\n"
-        
-        "🤖 <b>CONTROL DEL BOT</b>\n"
-        "/off - Desactivar para usuarios normales (VIPs siguen)\n"
-        "/activo - Activar para todos\n"
-        "/mantenimiento - Desactivar para TODOS (incluye VIPs)\n"
-        "/mantenimientoapagado - Reactivar después de mantenimiento\n"
-        "/offgroup - Desactivar en grupos\n"
-        "/ongroup chatid - Activar solo en un grupo\n\n"
-        
-        "👥 <b>GESTIÓN DE USUARIOS</b>\n"
-        "/nuevo - Crear usuario directo\n"
-        "/usuarios - Listar usuarios\n"
-        "/eliminar username - Eliminar usuario\n"
-        "/stats - Ver estadísticas\n\n"
-        
-        "💰 <b>GESTIÓN DE SALDO</b>\n"
-        "/agregarsaldo numero cantidad\n"
-        "/recargasgratis - Activar recargas auto\n"
-        "/offrecargas - Desactivar recargas auto\n\n"
-        
-        "🌟 <b>GESTIÓN VIP</b>\n"
-        "/agregarvip telegram_id - Agregar VIP (notifica auto)\n"
-        "/eliminarvip telegram_id\n"
-        "/listavip - Ver usuarios VIP\n"
-        "/statusvip - Estado backup VIP\n"
-        "/regenerarenlacevip telegram_id - Crear nuevo enlace\n"
-        "/agregarurlvip url - Agregar URL grupo VIP\n"
-        "/actualizarurlvip url - Actualizar URL\n"
-        "/configurargrupovip chatid - Config grupo VIP\n\n"
-        
-        "📋 <b>GESTIÓN DE GRUPOS</b>\n"
-        "/agregargrupo chatid\n"
-        "/eliminargrupo chatid\n\n"
-        
-        "⚙️ <b>ADMINISTRACIÓN</b>\n"
-        "/agregaradmin telegram_id\n"
-        "/comandosadmin - Ver esta ayuda",
-        parse_mode='HTML'
-    )
+    es_principal = is_admin_principal(user_id)
+    
+    msg = "👑 <b>COMANDOS DE ADMINISTRADOR</b>\n\n"
+    
+    msg += "🤖 <b>CONTROL DEL BOT</b>\n"
+    msg += "/off - Desactivar para usuarios normales (VIPs siguen)\n"
+    msg += "/activo - Activar para todos\n"
+    msg += "/mantenimiento - Desactivar para TODOS (incluye VIPs)\n"
+    msg += "/mantenimientoapagado - Reactivar después de mantenimiento\n"
+    msg += "/offgroup - Desactivar en grupos\n"
+    msg += "/ongroup chatid - Activar solo en un grupo\n\n"
+    
+    msg += "👥 <b>GESTIÓN DE USUARIOS</b>\n"
+    msg += "/nuevo - Crear usuario directo\n"
+    msg += "/usuarios - Listar usuarios\n"
+    msg += "/eliminar numero - Eliminar usuario\n"
+    msg += "/stats - Ver estadísticas\n\n"
+    
+    msg += "💰 <b>GESTIÓN DE SALDO</b>\n"
+    msg += "/agregarsaldo numero cantidad\n"
+    msg += "/recargasgratis - Activar recargas auto\n"
+    msg += "/offrecargas - Desactivar recargas auto\n\n"
+    
+    msg += "🌟 <b>GESTIÓN VIP</b>\n"
+    msg += "/agregarvip telegram_id - Agregar VIP (notifica auto)\n"
+    msg += "/eliminarvip telegram_id\n"
+    msg += "/listavip - Ver usuarios VIP\n"
+    msg += "/statusvip - Estado backup VIP\n"
+    msg += "/regenerarenlacevip telegram_id - Crear nuevo enlace\n"
+    msg += "/agregarurlvip url - Agregar URL grupo VIP\n"
+    msg += "/actualizarurlvip url - Actualizar URL\n"
+    msg += "/configurargrupovip chatid - Config grupo VIP\n\n"
+    
+    msg += "📋 <b>GESTIÓN DE GRUPOS</b>\n"
+    msg += "/agregargrupo chatid\n"
+    msg += "/eliminargrupo chatid\n\n"
+    
+    msg += "⚙️ <b>ADMINISTRACIÓN</b>\n"
+    if es_principal:
+        msg += "/agregaradmin telegram_id - Agregar admin secundario\n"
+        msg += "/eliminaradmin telegram_id - Eliminar admin secundario\n"
+    msg += "/listaradmins - Ver lista de administradores\n"
+    msg += "/comandosadmin - Ver esta ayuda\n\n"
+    
+    if es_principal:
+        msg += "👑 <b>Eres Admin Principal</b> - Acceso completo"
+    else:
+        msg += "🔸 <b>Eres Admin Secundario</b>\n"
+        msg += "⚠️ Cuando agregues VIPs, los admins principales serán notificados"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
 
 async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1555,6 +1814,9 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         usuarios_vip.add(vip_id)
         save_vip_to_json()  # Guardar inmediatamente
         
+        # Verificar si quien agregó es admin secundario
+        es_admin_secundario = str(user_id) in admins_secundarios
+        
         # Generar enlace VIP exclusivo automáticamente
         enlace_generado = False
         enlace_vip = None
@@ -1577,6 +1839,28 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Notificar al usuario automáticamente
         notificado = await notificar_activacion_vip(vip_id, context)
         
+        # Si es admin secundario, notificar a los admins principales
+        if es_admin_secundario:
+            for admin_principal in ADMINS_PRINCIPALES:
+                try:
+                    notif_msg = (
+                        f"⚠️ <b>NOTIFICACIÓN DE ADMIN SECUNDARIO</b>\n\n"
+                        f"👤 Admin: <code>{user_id}</code>\n"
+                        f"🌟 Agregó VIP: <code>{vip_id}</code>\n"
+                        f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                    )
+                    if enlace_generado:
+                        notif_msg += f"🔗 Enlace: <code>{enlace_vip}</code>\n\n"
+                    notif_msg += f"💡 Revisa esta acción y contacta al admin si es necesario."
+                    
+                    await context.bot.send_message(
+                        chat_id=admin_principal,
+                        text=notif_msg,
+                        parse_mode='HTML'
+                    )
+                except Exception as e:
+                    print(f"❌ Error notificando a admin principal {admin_principal}: {e}")
+        
         # Mensaje de confirmación al admin
         msg = f"✅ <b>Usuario {vip_id} agregado como VIP</b> 🌟\n\n"
         
@@ -1595,6 +1879,9 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
             msg += f"⚠️ No se pudo notificar (usuario debe iniciar el bot)\n"
         
         msg += f"💾 Backup guardado"
+        
+        if es_admin_secundario:
+            msg += f"\n\n📢 Admins principales notificados"
         
         await update.message.reply_text(msg, parse_mode='HTML')
         
@@ -1985,6 +2272,7 @@ def run_flask():
 def main():
     init_firebase()
     load_vip_from_json()  # Cargar usuarios VIP al iniciar
+    load_admins_from_json()  # Cargar admins secundarios al iniciar
     
     # Iniciar threads de backup y restore automático
     backup_thread = threading.Thread(target=auto_backup_vip, daemon=True)
@@ -2035,6 +2323,8 @@ def main():
     application.add_handler(CommandHandler('offgroup', cmd_offgroup))
     application.add_handler(CommandHandler('ongroup', cmd_ongroup))
     application.add_handler(CommandHandler('agregaradmin', cmd_agregaradmin))
+    application.add_handler(CommandHandler('eliminaradmin', cmd_eliminaradmin))
+    application.add_handler(CommandHandler('listaradmins', cmd_listaradmins))
     application.add_handler(CommandHandler('comandosadmin', cmd_comandosadmin))
     application.add_handler(CommandHandler('stats', cmd_stats))
     application.add_handler(CommandHandler('eliminar', cmd_eliminar))
