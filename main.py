@@ -282,139 +282,64 @@ async def check_vip_group_membership(user_id, context):
 # ============ TELEGRAM BOT HANDLERS ============
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    chat_type = update.effective_chat.type
-    chat_id = update.effective_chat.id
+    """Comando /start simplificado - Muestra información básica del usuario"""
+    user = update.effective_user
+    user_id = user.id
+    username = user.username or "Sin username"
+    first_name = user.first_name or "Usuario"
     
-    # VERIFICACIÓN 1: Modo Mantenimiento (afecta a TODOS excepto admins)
-    if mantenimiento_mode and not is_admin(user_id):
-        keyboard = [[InlineKeyboardButton("📞 Contactar Soporte", url="https://t.me/AXONDEVUI")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(mensaje_mantenimiento(), parse_mode='HTML', reply_markup=reply_markup)
-        return
-    
-    # Si es grupo, verificar que sea el grupo permitido (excepto admins y VIPs)
-    if chat_type in ['group', 'supergroup']:
-        if not is_admin(user_id) and user_id not in usuarios_vip:
-            if chat_id not in grupos_permitidos:
-                return  # Ignorar si no es un grupo permitido
-            if not group_active:
-                return  # Ignorar si grupos están desactivados
-    
+    # Verificar si es admin o VIP
     is_bot_admin = is_admin(user_id)
     is_vip = user_id in usuarios_vip
     
-    # VERIFICACIÓN 2: Bot OFF (solo afecta a usuarios normales, VIPs siguen funcionando)
-    if not bot_active and not is_bot_admin and not is_vip:
-        keyboard = [[InlineKeyboardButton("🌟 Obtener VIP", url="https://t.me/AXONDEVUI")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(mensaje_bot_desactivado(), parse_mode='HTML', reply_markup=reply_markup)
-        return
+    # Determinar tipo de usuario
+    if is_bot_admin:
+        tipo_usuario = "👑 ADMINISTRADOR"
+    elif is_vip:
+        tipo_usuario = "🌟 VIP"
+    else:
+        tipo_usuario = "👤 USUARIO NORMAL"
     
-    # Verificar uso diario para usuarios normales
-    if not is_bot_admin and not is_vip:
-        puede_usar, usos_restantes = verificar_uso_diario(user_id)
-        if not puede_usar:
-            keyboard = [[InlineKeyboardButton("🌟 Obtener VIP", url="https://t.me/AXONDEVUI")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                "⚠️ <b>LÍMITE DIARIO ALCANZADO</b>\n\n"
-                f"Has usado el bot {MAX_USO_DIARIO} veces hoy.\n"
-                "Vuelve mañana o contacta para acceso VIP:\n\n"
-                "🌟 <b>ACCESO VIP ILIMITADO</b>",
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-            return
+    # Botones básicos
+    keyboard = [
+        [InlineKeyboardButton("🆕 Crear Cuenta", callback_data='crear_cuenta')],
+        [InlineKeyboardButton("💰 Consultar Saldo", callback_data='consultar_saldo')],
+        [InlineKeyboardButton("💳 Recargar", callback_data='recargar_saldo')],
+        [InlineKeyboardButton("❓ Ayuda", callback_data='ayuda')]
+    ]
     
-    # Verificación de membresía solo para usuarios normales (no VIP, no admins)
-    if not is_bot_admin and not is_grp_admin and not is_vip:
-        is_member = await check_group_membership(user_id, context)
-        if not is_member:
-            keyboard = [[InlineKeyboardButton("🔗 Unirse al Grupo", url=GROUP_LINK)]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text(
-                f"❌ <b>ACCESO DENEGADO</b>\n\n"
-                f"Debes unirte al grupo oficial para usar el bot.\n\n"
-                f"Una vez te unas, vuelve y usa /start",
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-            return
-    
-    # Registrar uso para usuarios normales
-    if not is_bot_admin and not is_grp_admin and not is_vip:
-        registrar_uso(user_id)
-        puede_usar, usos_restantes = verificar_uso_diario(user_id)
-    
-    # Botones para usuarios VIP
+    # Agregar botones especiales según tipo de usuario
     if is_vip:
-        keyboard = [
-            [InlineKeyboardButton("🆕 Crear Cuenta", callback_data='crear_cuenta')],
-            [InlineKeyboardButton("💰 Consultar Saldo", callback_data='consultar_saldo')],
-            [InlineKeyboardButton("💳 Recargar", callback_data='recargar_saldo')],
-            [InlineKeyboardButton("🌟 Grupo VIP", url=url_grupo_vip)],
-            [InlineKeyboardButton("❓ Ayuda", callback_data='ayuda')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Verificar si tiene enlace personal
-        if user_id in enlaces_vip_personales:
-            enlace = enlaces_vip_personales[user_id]
-            await update.message.reply_text(
-                f"👋 <b>¡Bienvenido Usuario VIP!</b> 🌟\n\n"
-                f"Tienes acceso exclusivo ilimitado.\n\n"
-                f"🎁 <b>TU ENLACE VIP EXCLUSIVO:</b>\n"
-                f"{enlace}\n\n"
-                f"⚠️ Este enlace es de un solo uso.\n\n"
-                f"Selecciona una opción:",
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-        else:
-            await update.message.reply_text(
-                f"👋 <b>¡Bienvenido Usuario VIP!</b> 🌟\n\n"
-                f"Tienes acceso exclusivo ilimitado.\n\n"
-                f"Selecciona una opción:",
-                parse_mode='HTML',
-                reply_markup=reply_markup
-            )
-    # Botones para admins
+        keyboard.insert(3, [InlineKeyboardButton("🌟 Grupo VIP", url=url_grupo_vip)])
     elif is_bot_admin:
-        keyboard = [
-            [InlineKeyboardButton("🆕 Crear Cuenta", callback_data='crear_cuenta')],
-            [InlineKeyboardButton("💰 Consultar Saldo", callback_data='consultar_saldo')],
-            [InlineKeyboardButton("💳 Recargar", callback_data='recargar_saldo')],
-            [InlineKeyboardButton("👑 Panel Admin", callback_data='panel_admin')],
-            [InlineKeyboardButton("❓ Ayuda", callback_data='ayuda')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            f"👋 <b>¡Bienvenido Administrador!</b> 👑\n\n"
-            f"Acceso completo al sistema.\n\n"
-            f"Selecciona una opción:",
-            parse_mode='HTML',
-            reply_markup=reply_markup
-        )
-    # Botones para usuarios normales
+        keyboard.insert(3, [InlineKeyboardButton("👑 Panel Admin", callback_data='panel_admin')])
+    else:
+        keyboard.insert(3, [InlineKeyboardButton("🌟 Obtener VIP", url="https://t.me/AXONDEVUI")])
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Mensaje de bienvenida con información del usuario
+    mensaje = (
+        f"👋 <b>¡Bienvenido a Nequi Axon Labs!</b>\n\n"
+        f"📋 <b>TU INFORMACIÓN:</b>\n"
+        f"👤 Nombre: {first_name}\n"
+        f"🆔 Username: @{username}\n"
+        f"🔢 ID: <code>{user_id}</code>\n"
+        f"⭐ Tipo: {tipo_usuario}\n\n"
+    )
+    
+    # Agregar información adicional según tipo de usuario
+    if is_bot_admin:
+        mensaje += "✅ Tienes acceso completo al sistema.\n\n"
+    elif is_vip:
+        mensaje += "✅ Tienes acceso ilimitado sin restricciones.\n\n"
     else:
         puede_usar, usos_restantes = verificar_uso_diario(user_id)
-        keyboard = [
-            [InlineKeyboardButton("🆕 Crear Cuenta", callback_data='crear_cuenta')],
-            [InlineKeyboardButton("💰 Consultar Saldo", callback_data='consultar_saldo')],
-            [InlineKeyboardButton("💳 Recargar", callback_data='recargar_saldo')],
-            [InlineKeyboardButton("🌟 Obtener VIP", url="https://t.me/AXONDEVUI")],
-            [InlineKeyboardButton("❓ Ayuda", callback_data='ayuda')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            f"👋 <b>¡Bienvenido a Nequi Axon Free!</b>\n\n"
-            f"Gestiona tus cuentas de forma rápida y segura.\n\n"
-            f"📊 <b>Usos restantes hoy:</b> {usos_restantes}/{MAX_USO_DIARIO}\n\n"
-            f"Selecciona una opción:",
-            parse_mode='HTML',
-            reply_markup=reply_markup
-        )
+        mensaje += f"📊 Usos restantes hoy: {usos_restantes}/{MAX_USO_DIARIO}\n\n"
+    
+    mensaje += "Selecciona una opción:"
+    
+    await update.message.reply_text(mensaje, parse_mode='HTML', reply_markup=reply_markup)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
