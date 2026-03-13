@@ -1688,8 +1688,11 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario VIP elimina una cuenta que ÉL creó"""
     user_id = update.effective_user.id
     
+    print(f"🗑️ ELIMINARUSER - Usuario: {user_id}")
+    
     # Solo VIPs y admins pueden usar este comando
     if user_id not in usuarios_vip and not is_admin(user_id):
+        print(f"❌ Usuario {user_id} - No es VIP ni admin")
         await update.message.reply_text(
             "❌ <b>ACCESO DENEGADO</b>\n\n"
             "Este comando es solo para usuarios VIP.\n"
@@ -1698,7 +1701,10 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
+    print(f"✅ Usuario {user_id} - Es VIP o admin")
+    
     if not context.args:
+        print(f"❌ Usuario {user_id} - Sin argumentos")
         await update.message.reply_text(
             "📱 <b>ELIMINAR USUARIO</b>\n\n"
             "Usa: <code>/eliminaruser numero</code>\n"
@@ -1709,6 +1715,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     phone = context.args[0].strip()
+    print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
     
     if db:
         try:
@@ -1716,6 +1723,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             doc = db.collection('users').document(phone).get()
             
             if not doc.exists:
+                print(f"❌ Usuario {user_id} - Número {phone} no existe")
                 await update.message.reply_text(
                     "❌ <b>NÚMERO NO ENCONTRADO</b>\n\n"
                     f"El número {phone} no existe en la base de datos.",
@@ -1727,8 +1735,11 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             created_by = data.get('created_by')
             username = data.get('name', 'N/A')
             
+            print(f"📋 Usuario {user_id} - Cuenta encontrada: {username}, creada por: {created_by}")
+            
             # Verificar que el usuario VIP sea quien lo creó (admins pueden eliminar cualquiera)
-            if not is_admin(user_id) and created_by != user_id:
+            if not is_admin(user_id) and str(created_by) != str(user_id):
+                print(f"❌ Usuario {user_id} - No es el creador. Creador: {created_by}")
                 await update.message.reply_text(
                     "❌ <b>ACCESO DENEGADO</b>\n\n"
                     f"No puedes eliminar este usuario.\n"
@@ -1738,14 +1749,17 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 return
             
+            print(f"✅ Usuario {user_id} - Verificación pasada, eliminando...")
+            
             # Eliminar de ambas colecciones
             db.collection('users').document(phone).delete()
             
             # Intentar eliminar de usuarios_app si existe
             try:
                 db.collection('usuarios_app').document(username).delete()
-            except:
-                pass
+                print(f"✅ Usuario {user_id} - Eliminado de usuarios_app")
+            except Exception as e:
+                print(f"⚠️ No se pudo eliminar de usuarios_app: {e}")
             
             await update.message.reply_text(
                 f"✅ <b>USUARIO ELIMINADO</b>\n\n"
@@ -1755,7 +1769,9 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode='HTML'
             )
             
-            # Notificar al admin
+            print(f"✅ Usuario {user_id} - Eliminación completada")
+            
+            # Notificar al admin principal
             admin_msg = f"""
 🗑️ <b>USUARIO ELIMINADO</b>
 
@@ -1764,10 +1780,10 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 👤 <b>Username:</b> @{username}
 🕐 <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 """
-            send_telegram_message(admin_msg, ADMIN_CHAT_ID)
+            send_telegram_message(admin_msg, ADMIN_PRINCIPAL_1)
             
         except Exception as e:
-            print(f"Error eliminando usuario: {e}")
+            print(f"❌ Error eliminando usuario: {e}")
             await update.message.reply_text(
                 "❌ <b>ERROR</b>\n\n"
                 "Hubo un error al eliminar el usuario.\n"
