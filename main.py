@@ -1689,14 +1689,24 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = update.effective_user.id
         
-        print(f"🗑️ ELIMINARUSER - Usuario: {user_id}")
+        print(f"🗑️ ELIMINARUSER - Usuario: {user_id}, Tipo: {type(user_id)}")
+        print(f"🗑️ usuarios_vip: {usuarios_vip}")
+        print(f"🗑️ user_id in usuarios_vip: {user_id in usuarios_vip}")
+        print(f"🗑️ is_admin: {is_admin(user_id)}")
         print(f"🗑️ Argumentos: {context.args}")
         
         # Respuesta inmediata para confirmar que el comando se recibió
-        await update.message.reply_text("⏳ Procesando...", parse_mode='HTML')
+        await update.message.reply_text("⏳ Procesando eliminación...", parse_mode='HTML')
+        print(f"✅ Respuesta inmediata enviada")
         
         # Solo VIPs y admins pueden usar este comando
-        if user_id not in usuarios_vip and not is_admin(user_id):
+        # Convertir user_id a int para comparar correctamente
+        is_vip = user_id in usuarios_vip or str(user_id) in usuarios_vip
+        is_bot_admin = is_admin(user_id)
+        
+        print(f"🔍 is_vip: {is_vip}, is_bot_admin: {is_bot_admin}")
+        
+        if not is_vip and not is_bot_admin:
             print(f"❌ Usuario {user_id} - No es VIP ni admin")
             await update.message.reply_text(
                 "❌ <b>ACCESO DENEGADO</b>\n\n"
@@ -1706,7 +1716,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
-        print(f"✅ Usuario {user_id} - Es VIP o admin")
+        print(f"✅ Usuario {user_id} - Es VIP o admin, continuando...")
         
         if not context.args:
             print(f"❌ Usuario {user_id} - Sin argumentos")
@@ -1730,9 +1740,12 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         
+        print(f"✅ Firebase disponible, buscando documento...")
+        
         try:
             # Verificar que el usuario existe
             doc = db.collection('users').document(phone).get()
+            print(f"✅ Documento obtenido, exists: {doc.exists}")
             
             if not doc.exists:
                 print(f"❌ Usuario {user_id} - Número {phone} no existe")
@@ -1769,6 +1782,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             # Eliminar de ambas colecciones
             db.collection('users').document(phone).delete()
+            print(f"✅ Eliminado de users")
             
             # Intentar eliminar de usuarios_app si existe
             try:
@@ -1804,7 +1818,8 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
             traceback.print_exc()
             await update.message.reply_text(
                 "❌ <b>ERROR</b>\n\n"
-                "Hubo un error al eliminar el usuario.\n"
+                f"Hubo un error al eliminar el usuario.\n"
+                f"Error: {str(e)}\n\n"
                 "Intenta de nuevo o contacta al soporte.",
                 parse_mode='HTML'
             )
@@ -1816,12 +1831,12 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await update.message.reply_text(
                 "❌ <b>ERROR CRÍTICO</b>\n\n"
-                "Hubo un error inesperado.\n"
+                f"Hubo un error inesperado: {str(e)}\n\n"
                 "Contacta al soporte: @AXONDEVUI",
                 parse_mode='HTML'
             )
-        except:
-            pass
+        except Exception as e2:
+            print(f"❌ No se pudo enviar mensaje de error: {e2}")
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario consulta su saldo"""
