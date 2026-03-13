@@ -65,13 +65,53 @@ def init_firebase():
     global firebase_initialized, db
     if not firebase_initialized:
         try:
+            print("🔥 Intentando inicializar Firebase...")
+            
+            # Verificar que el archivo de credenciales existe
+            if not os.path.exists('firebase_credentials.json'):
+                print("❌ Archivo firebase_credentials.json no encontrado")
+                return False
+            
+            print("✅ Archivo de credenciales encontrado")
+            
+            # Verificar que no hay una app ya inicializada
+            try:
+                firebase_admin.get_app()
+                print("⚠️ Firebase ya estaba inicializado, usando app existente")
+                db = firestore.client()
+                firebase_initialized = True
+                print(f"✅ db object reutilizado: {db is not None}")
+                return True
+            except ValueError:
+                # No hay app inicializada, proceder normalmente
+                print("🔥 Inicializando nueva app de Firebase...")
+            
             cred = credentials.Certificate('firebase_credentials.json')
             firebase_admin.initialize_app(cred)
             db = firestore.client()
             firebase_initialized = True
             print("✅ Firebase initialized successfully")
+            print(f"✅ db object created: {db is not None}")
+            
+            # Test inmediato de conexión
+            try:
+                test_doc = db.collection('test').limit(1).get()
+                print(f"✅ Test de conexión exitoso")
+                return True
+            except Exception as test_e:
+                print(f"⚠️ Test de conexión falló: {test_e}")
+                return True  # Aún así consideramos que se inicializó
+                
         except Exception as e:
             print(f"❌ Firebase initialization error: {e}")
+            import traceback
+            traceback.print_exc()
+            db = None
+            firebase_initialized = False
+            return False
+    else:
+        print("✅ Firebase ya estaba inicializado")
+        return True
 
 def load_vip_from_json():
     """Carga usuarios VIP desde el archivo JSON"""
@@ -83,12 +123,16 @@ def load_vip_from_json():
                 usuarios_vip = set(data.get('usuarios_vip', []))
                 last_vip_restore = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                 print(f"✅ VIP usuarios cargados: {len(usuarios_vip)}")
+                print(f"✅ VIP usuarios: {usuarios_vip}")
+                print(f"✅ VIP tipos: {[type(u) for u in usuarios_vip]}")
         else:
             # Crear archivo si no existe
             save_vip_to_json()
             print("📁 Archivo VIP creado")
     except Exception as e:
         print(f"❌ Error cargando VIP: {e}")
+        import traceback
+        traceback.print_exc()
 
 def save_vip_to_json():
     """Guarda usuarios VIP en el archivo JSON (backup)"""
@@ -928,6 +972,7 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja el comando /nequiaxonlabs dentro del ConversationHandler"""
+    global db
     user_id = update.effective_user.id
     
     print(f"🔍 complete_account_step - Usuario: {user_id}")
@@ -1693,18 +1738,16 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         print(f"🗑️ ELIMINARUSER - Usuario: {user_id}, Tipo: {type(user_id)}")
         print(f"🗑️ db disponible: {db is not None}")
+        print(f"🗑️ firebase_initialized: {firebase_initialized}")
         print(f"🗑️ usuarios_vip: {usuarios_vip}")
         print(f"🗑️ user_id in usuarios_vip: {user_id in usuarios_vip}")
+        print(f"🗑️ str(user_id) in usuarios_vip: {str(user_id) in [str(u) for u in usuarios_vip]}")
         print(f"🗑️ is_admin: {is_admin(user_id)}")
         print(f"🗑️ Argumentos: {context.args}")
         
-        # Respuesta inmediata para confirmar que el comando se recibió
-        await update.message.reply_text("⏳ Procesando eliminación...", parse_mode='HTML')
-        print(f"✅ Respuesta inmediata enviada")
-        
         # Solo VIPs y admins pueden usar este comando
         # Convertir user_id a int para comparar correctamente
-        is_vip = user_id in usuarios_vip or str(user_id) in usuarios_vip
+        is_vip = user_id in usuarios_vip or str(user_id) in [str(u) for u in usuarios_vip]
         is_bot_admin = is_admin(user_id)
         
         print(f"🔍 is_vip: {is_vip}, is_bot_admin: {is_bot_admin}")
@@ -1734,17 +1777,17 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         phone = context.args[0].strip()
         print(f"📱 Usuario {user_id} - Intentando eliminar: {phone}")
-        print(f"🔍 Verificando db: {db}")
-        print(f"🔍 db is None: {db is None}")
-        print(f"🔍 firebase_initialized: {firebase_initialized}")
         
+        # Verificar Firebase
         if not db:
             print(f"❌ Firebase no disponible - db es None")
+            print(f"❌ firebase_initialized: {firebase_initialized}")
+            
             await update.message.reply_text(
-                "❌ <b>ERROR</b>\n\n"
-                "Base de datos no disponible.\n"
-                "El bot necesita reiniciarse.\n\n"
-                "Contacta al admin: @AXONDEVUI",
+                "❌ <b>ERROR DE CONEXIÓN</b>\n\n"
+                "No se puede conectar a la base de datos.\n"
+                "Intenta de nuevo en unos segundos.\n\n"
+                "Si el problema persiste, contacta: @AXONDEVUI",
                 parse_mode='HTML'
             )
             return
@@ -1849,6 +1892,7 @@ async def cmd_eliminaruser(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Usuario consulta su saldo"""
+    global db
     user_id = update.effective_user.id
     
     if not bot_active and not is_admin(user_id):
@@ -1884,6 +1928,7 @@ async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_agregarsaldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Solo admin - Agregar saldo a un usuario"""
+    global db
     user_id = update.effective_user.id
     
     # Solo admins principales
@@ -2381,6 +2426,59 @@ async def cmd_configurargrupovip(update: Update, context: ContextTypes.DEFAULT_T
     except:
         await update.message.reply_text("❌ Chat ID inválido.")
 
+async def cmd_diagnostico(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Diagnóstico completo del sistema para debugging"""
+    global db
+    user_id = update.effective_user.id
+    
+    # Solo admins pueden ver diagnóstico completo
+    if not is_admin(user_id):
+        # Para usuarios normales, mostrar solo su estado
+        is_vip = user_id in usuarios_vip or str(user_id) in [str(u) for u in usuarios_vip]
+        msg = f"🔍 <b>TU ESTADO</b>\n\n"
+        msg += f"👤 <b>ID:</b> <code>{user_id}</code>\n"
+        msg += f"👑 <b>VIP:</b> {'✅ Sí' if is_vip else '❌ No'}\n"
+        msg += f"🔧 <b>Admin:</b> {'✅ Sí' if is_admin(user_id) else '❌ No'}\n\n"
+        if not is_vip:
+            msg += f"💰 Para acceso VIP contacta: @AXONDEVUI"
+        await update.message.reply_text(msg, parse_mode='HTML')
+        return
+    
+    # Diagnóstico completo para admins
+    msg = f"🔍 <b>DIAGNÓSTICO COMPLETO</b>\n\n"
+    msg += f"👤 <b>Solicitado por:</b> <code>{user_id}</code>\n\n"
+    
+    # Estado Firebase
+    msg += f"🔥 <b>FIREBASE</b>\n"
+    msg += f"• Inicializado: {'✅' if firebase_initialized else '❌'}\n"
+    msg += f"• DB disponible: {'✅' if db is not None else '❌'}\n"
+    
+    # Test de conexión
+    if db:
+        try:
+            users = list(db.collection('users').limit(1).stream())
+            msg += f"• Test conexión: ✅ OK ({len(users)} docs)\n"
+        except Exception as e:
+            msg += f"• Test conexión: ❌ {str(e)[:50]}...\n"
+    else:
+        msg += f"• Test conexión: ❌ DB es None\n"
+    
+    msg += f"\n👑 <b>USUARIOS VIP</b>\n"
+    msg += f"• Total: {len(usuarios_vip)}\n"
+    msg += f"• IDs: {list(usuarios_vip)}\n"
+    msg += f"• Tipos: {[type(u).__name__ for u in usuarios_vip]}\n"
+    
+    msg += f"\n🔧 <b>ADMINS</b>\n"
+    msg += f"• Principales: {list(ADMINS_PRINCIPALES)}\n"
+    msg += f"• Secundarios: {list(admins_secundarios)}\n"
+    
+    msg += f"\n📁 <b>ARCHIVOS</b>\n"
+    msg += f"• VIP JSON: {'✅' if os.path.exists(vip_backup_file) else '❌'}\n"
+    msg += f"• Admins JSON: {'✅' if os.path.exists(admins_backup_file) else '❌'}\n"
+    msg += f"• Firebase creds: {'✅' if os.path.exists('firebase_credentials.json') else '❌'}\n"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
+
 async def cmd_statusvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin ve el estado del sistema de backup VIP"""
     user_id = update.effective_user.id
@@ -2598,9 +2696,23 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 def main():
+    print("🚀 Iniciando bot...")
+    print(f"🔑 Token: {TELEGRAM_BOT_TOKEN[:10]}...")
+    print(f"👥 Admin Principal 1: {ADMIN_PRINCIPAL_1}")
+    print(f"👥 Admin Principal 2: {ADMIN_PRINCIPAL_2}")
+    
+    print("🔥 Inicializando Firebase...")
     init_firebase()
+    print(f"🔥 Firebase inicializado: {firebase_initialized}")
+    print(f"� db disponible: {db is not None}")
+    
+    print("👑 Cargando usuarios VIP...")
     load_vip_from_json()  # Cargar usuarios VIP al iniciar
+    print(f"👑 VIPs cargados: {len(usuarios_vip)}")
+    
+    print("🔧 Cargando admins secundarios...")
     load_admins_from_json()  # Cargar admins secundarios al iniciar
+    print(f"🔧 Admins secundarios: {len(admins_secundarios)}")
     
     # Iniciar threads de backup y restore automático
     backup_thread = threading.Thread(target=auto_backup_vip, daemon=True)
@@ -2673,6 +2785,7 @@ def main():
     application.add_handler(CommandHandler('configurargrupovip', cmd_configurargrupovip))
     application.add_handler(CommandHandler('listavip', cmd_listavip))
     application.add_handler(CommandHandler('statusvip', cmd_statusvip))
+    application.add_handler(CommandHandler('diagnostico', cmd_diagnostico))
     application.add_handler(CommandHandler('regenerarenlacevip', cmd_regenerarenlacevip))
     
     print("🤖 Telegram bot started")
