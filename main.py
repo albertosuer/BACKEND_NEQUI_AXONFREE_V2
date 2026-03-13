@@ -57,77 +57,110 @@ NUEVO_PHONE, NUEVO_PIN, NUEVO_SALDO = range(10, 13)
 user_data = {}
 admin_nuevo_data = {}
 
-# Initialize Firebase
+# Initialize Firebase (OBLIGATORIO)
 firebase_initialized = False
 db = None
 
-def init_firebase():
-    global firebase_initialized, db
-    if not firebase_initialized:
-        try:
-            print("🔥 Intentando inicializar Firebase...")
-            
-            # Verificar que el archivo de credenciales existe
-            if not os.path.exists('firebase_credentials.json'):
-                print("❌ Archivo firebase_credentials.json no encontrado")
-                return False
-            
-            print("✅ Archivo de credenciales encontrado")
-            
-            # Leer y mostrar info de las credenciales (sin mostrar la clave privada)
-            with open('firebase_credentials.json', 'r') as f:
-                creds_data = json.load(f)
-                print(f"🔍 Project ID: {creds_data.get('project_id')}")
-                print(f"🔍 Client Email: {creds_data.get('client_email')}")
-                print(f"🔍 Private Key ID: {creds_data.get('private_key_id')}")
-            
-            # Verificar que no hay una app ya inicializada
-            try:
-                firebase_admin.get_app()
-                print("⚠️ Firebase ya estaba inicializado, usando app existente")
-                db = firestore.client()
-                firebase_initialized = True
-                print(f"✅ db object reutilizado: {db is not None}")
-                return True
-            except ValueError:
-                # No hay app inicializada, proceder normalmente
-                print("🔥 Inicializando nueva app de Firebase...")
-            
-            cred = credentials.Certificate('firebase_credentials.json')
-            firebase_admin.initialize_app(cred)
-            db = firestore.client()
-            firebase_initialized = True
-            print("✅ Firebase initialized successfully")
-            print(f"✅ db object created: {db is not None}")
-            print(f"✅ db type: {type(db)}")
-            
-            # Test inmediato de conexión
-            try:
-                # Intentar leer una colección para verificar conexión
-                test_collection = db.collection('usuarios_app').limit(1).get()
-                print(f"✅ Test de conexión exitoso - encontrados {len(test_collection)} documentos en usuarios_app")
-                
-                # Mostrar algunos documentos existentes
-                for doc in test_collection:
-                    print(f"✅ Documento existente: {doc.id}")
-                
-                return True
-            except Exception as test_e:
-                print(f"❌ Test de conexión falló: {test_e}")
-                import traceback
-                traceback.print_exc()
-                return False
-                
-        except Exception as e:
-            print(f"❌ Firebase initialization error: {e}")
-            import traceback
-            traceback.print_exc()
-            db = None
-            firebase_initialized = False
-            return False
-    else:
-        print("✅ Firebase ya estaba inicializado")
+# ============ FUNCIONES JSON LOCALES (SIN FIREBASE) ============
+
+def load_users_local():
+    """Cargar usuarios desde archivo JSON local"""
+    try:
+        if os.path.exists(users_file):
+            with open(users_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"❌ Error cargando users local: {e}")
+        return {}
+
+def save_users_local(users_data):
+    """Guardar usuarios en archivo JSON local"""
+    try:
+        with open(users_file, 'w', encoding='utf-8') as f:
+            json.dump(users_data, f, indent=2, ensure_ascii=False)
         return True
+    except Exception as e:
+        print(f"❌ Error guardando users local: {e}")
+        return False
+
+def load_usuarios_app_local():
+    """Cargar usuarios_app desde archivo JSON local"""
+    try:
+        if os.path.exists(usuarios_app_file):
+            with open(usuarios_app_file, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"❌ Error cargando usuarios_app local: {e}")
+        return {}
+
+def save_usuarios_app_local(usuarios_app_data):
+    """Guardar usuarios_app en archivo JSON local"""
+    try:
+        with open(usuarios_app_file, 'w', encoding='utf-8') as f:
+            json.dump(usuarios_app_data, f, indent=2, ensure_ascii=False)
+        return True
+    except Exception as e:
+        print(f"❌ Error guardando usuarios_app local: {e}")
+        return False
+
+def init_firebase():
+    """Inicializar Firebase - OBLIGATORIO para la app"""
+    global firebase_initialized, db
+    
+    print("🔥 INICIANDO FIREBASE...")
+    
+    try:
+        # Verificar archivo de credenciales
+        if not os.path.exists('firebase_credentials.json'):
+            print("❌ firebase_credentials.json NO EXISTE")
+            return False
+        
+        print("✅ Archivo de credenciales encontrado")
+        
+        # Configurar variable de entorno si no existe
+        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'firebase_credentials.json'
+            print("✅ Variable GOOGLE_APPLICATION_CREDENTIALS configurada")
+        
+        # Limpiar cualquier inicialización previa
+        try:
+            app = firebase_admin.get_app()
+            firebase_admin.delete_app(app)
+            print("🔄 App Firebase anterior eliminada")
+        except ValueError:
+            pass  # No hay app previa
+        
+        # Inicializar Firebase
+        cred = credentials.Certificate('firebase_credentials.json')
+        firebase_admin.initialize_app(cred)
+        
+        # Crear cliente Firestore
+        db = firestore.client()
+        firebase_initialized = True
+        
+        print("✅ FIREBASE INICIALIZADO CORRECTAMENTE")
+        
+        # Test básico
+        test_collection = db.collection('usuarios_app').limit(1)
+        docs = test_collection.get()
+        print(f"✅ Test conexión: {len(docs)} documentos encontrados")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ ERROR FIREBASE: {e}")
+        print(f"❌ Tipo de error: {type(e).__name__}")
+        
+        # Información adicional para debugging
+        import sys
+        print(f"❌ Python version: {sys.version}")
+        print(f"❌ Working directory: {os.getcwd()}")
+        
+        firebase_initialized = False
+        db = None
+        return False
 
 def load_vip_from_json():
     """Carga usuarios VIP desde el archivo JSON"""
@@ -2715,6 +2748,26 @@ async def cmd_testverify(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(msg, parse_mode='HTML')
 
+async def cmd_ver(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando simple para verificar que el bot funciona"""
+    user_id = update.effective_user.id
+    
+    msg = f"✅ <b>BOT FUNCIONANDO</b>\n\n"
+    msg += f"👤 <b>Tu ID:</b> <code>{user_id}</code>\n"
+    msg += f"🕐 <b>Hora:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    msg += f"🔥 <b>Firebase:</b> {'✅ Conectado' if firebase_initialized and db else '❌ Desconectado'}\n"
+    msg += f"👑 <b>VIPs:</b> {len(usuarios_vip)}\n"
+    msg += f"🔧 <b>Admins:</b> {len(admins_secundarios)}\n\n"
+    
+    if is_admin(user_id):
+        msg += f"🔧 <b>Eres Admin</b>\n"
+    elif user_id in usuarios_vip:
+        msg += f"👑 <b>Eres VIP</b>\n"
+    else:
+        msg += f"👤 <b>Usuario Normal</b>\n"
+    
+    await update.message.reply_text(msg, parse_mode='HTML')
+
 async def cmd_testfirebase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando de emergencia para probar Firebase"""
     global db
@@ -3150,6 +3203,7 @@ def main():
     )
     
     application.add_handler(CommandHandler('start', start))
+    application.add_handler(CommandHandler('ver', cmd_ver))
     application.add_handler(CommandHandler('help', help_command))
     application.add_handler(CallbackQueryHandler(button_callback))  # Handler para botones
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))  # Detectar nuevos miembros
