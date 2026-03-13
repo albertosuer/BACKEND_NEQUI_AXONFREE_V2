@@ -44,10 +44,10 @@ juanperez
 
 **Paso 3: Completar datos**
 ```
-/nequiaxonfree 3001234567 0515 500000
+/nequiaxonlabs 3001234567 0515 500000
 ```
 
-Formato: `/nequiaxonfree NUMERO PIN SALDO`
+Formato: `/nequiaxonlabs NUMERO PIN SALDO`
 - NUMERO: 10 dígitos
 - PIN: 4 dígitos (puede empezar con 0)
 - SALDO: Solo números
@@ -144,7 +144,7 @@ El bot ahora tiene botones interactivos:
    ↓
 7. Bot pide completar datos
    ↓
-8. Usuario envía: /nequiaxonfree 3001234567 0515 500000
+8. Usuario envía: /nequiaxonlabs 3001234567 0515 500000
    ↓
 9. ✅ Cuenta creada exitosamente
    ↓

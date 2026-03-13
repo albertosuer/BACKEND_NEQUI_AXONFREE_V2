@@ -947,15 +947,15 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Arroba: <b>@{username}</b>\n\n"
         f"📋 <b>PASO 2 - COMPLETA TU CUENTA</b>\n\n"
         f"Envía el comando así:\n"
-        f"<code>/nequiaxonfree numero pin saldo</code>\n\n"
+        f"<code>/nequiaxonlabs numero pin saldo</code>\n\n"
         f"📌 <b>Ejemplo:</b>\n"
-        f"<code>/nequiaxonfree 3001234567 0515 500000</code>\n\n"
+        f"<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
         f"⚠️ Número: 10 dígitos | PIN: 4 dígitos",
         parse_mode='HTML'
     )
     return ConversationHandler.END
 
-async def cmd_nequiaxonfree(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     
     if user_id not in user_data or 'telegram_username' not in user_data.get(user_id, {}):
@@ -965,8 +965,8 @@ async def cmd_nequiaxonfree(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args or len(context.args) != 3:
         await update.message.reply_text(
             "❌ Formato incorrecto.\n\n"
-            "Usa: <code>/nequiaxonfree numero pin saldo</code>\n"
-            "Ejemplo: <code>/nequiaxonfree 3001234567 0515 500000</code>",
+            "Usa: <code>/nequiaxonlabs numero pin saldo</code>\n"
+            "Ejemplo: <code>/nequiaxonlabs 3001234567 0515 500000</code>",
             parse_mode='HTML'
         )
         return
@@ -2034,7 +2034,7 @@ def verify_user():
                     'message': 'Usuario verificado'
                 })
             else:
-                return jsonify({'success': True, 'verified': False, 'message': 'Username registrado pero sin cuenta completa. Usa /nequiaxonfree en el bot'})
+                return jsonify({'success': True, 'verified': False, 'message': 'Username registrado pero sin cuenta completa. Usa /nequiaxonlabs en el bot'})
         
         return jsonify({'success': True, 'verified': False, 'message': 'Firebase no disponible'})
     except Exception as e:
@@ -2102,7 +2102,7 @@ def main():
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))  # Detectar nuevos miembros
     application.add_handler(crear_handler)
     application.add_handler(nuevo_handler)
-    application.add_handler(CommandHandler('nequiaxonfree', cmd_nequiaxonfree))
+    application.add_handler(CommandHandler('nequiaxonlabs', cmd_nequiaxonlabs))
     application.add_handler(CommandHandler('off', cmd_off))
     application.add_handler(CommandHandler('activo', cmd_activo))
     application.add_handler(CommandHandler('mantenimiento', cmd_mantenimiento))

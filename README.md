@@ -1,4 +1,4 @@
-# 🤖 Nequi Axon Free Bot
+# 🤖 Nequi Axon Labs Bot
 
 Bot de Telegram para gestión de cuentas Nequi con sistema VIP, backup automático y control avanzado.
 
@@ -165,7 +165,7 @@ docker run -p 5000:5000 nequi-bot
 2. Iniciar el bot: `/start`
 3. Crear cuenta: `/crear`
 4. Ingresar arroba de Telegram
-5. Completar datos: `/nequiaxonfree numero pin saldo`
+5. Completar datos: `/nequiaxonlabs numero pin saldo`
 
 ### Usuario VIP
 1. Admin agrega como VIP: `/agregarvip telegram_id`
@@ -230,9 +230,9 @@ Este proyecto es privado y de uso exclusivo.
 
 ## 🔄 Versión
 
-**v2.3** - Sistema completo con VIP, backup automático y control dual
+**v2.4** - Nequi Axon Labs - Comando actualizado a /nequiaxonlabs
 
 ---
 
 **Desarrollado por:** Axon Dev
-**Última actualización:** 2026-02-01
+**Última actualización:** 2026-03-13

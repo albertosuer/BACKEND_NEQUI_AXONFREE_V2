@@ -1,4 +1,32 @@
-# 📝 CHANGELOG - Nequi Axon Free Bot
+# 📝 CHANGELOG - Nequi Axon Labs Bot
+
+## [2.4.0] - 2026-03-13
+
+### 🔄 Cambiado
+- **Comando Principal Renombrado**: `/nequiaxonfree` → `/nequiaxonlabs`
+  - Refleja el nuevo nombre: Nequi Axon Labs
+  - Comando actualizado en todo el código
+  - Documentación completamente actualizada
+
+- **Grupo Oficial Actualizado**: 
+  - Nuevo grupo: https://t.me/comunidadofficialchat
+  - Anterior: https://t.me/Nequiaxonfree
+  - Enlaces actualizados en toda la documentación
+
+### 📚 Documentación
+- **NUEVO_COMANDO.md**: Guía completa del nuevo comando
+  - Tutorial paso a paso
+  - Ejemplos visuales
+  - Errores comunes y soluciones
+  - Preguntas frecuentes
+  - Comparación con comando anterior
+
+### 🎯 Migración
+- Usuarios deben usar `/nequiaxonlabs` en lugar de `/nequiaxonfree`
+- Todos los demás comandos permanecen igual
+- Cuentas existentes no se ven afectadas
+
+---
 
 ## [2.3.0] - 2026-02-01
 

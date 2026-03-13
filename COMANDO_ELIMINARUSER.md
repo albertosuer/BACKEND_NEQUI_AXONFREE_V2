@@ -51,7 +51,7 @@ db.collection('users').document(phone).set({
 ```
 /crear
 → juanperez
-→ /nequiaxonfree 3001234567 0515 500000
+→ /nequiaxonlabs 3001234567 0515 500000
 ✅ Cuenta creada (created_by: 123456)
 ```
 
