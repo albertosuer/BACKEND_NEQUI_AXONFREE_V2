@@ -1026,7 +1026,7 @@ async def crear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     
-    # Pedir confirmación del username para evitar estafas
+    # IR DIRECTO A CREAR CUENTA CON INSTRUCCIONES
     user_data[user_id] = {
         'telegram_id': user_id,
         'telegram_username': telegram_username
