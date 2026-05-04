@@ -4,6 +4,7 @@ import requests
 import firebase_admin
 from firebase_admin import credentials, firestore
 from datetime import datetime
+from dateutil.relativedelta import relativedelta
 import os
 from dotenv import load_dotenv
 import threading
@@ -19,11 +20,11 @@ CORS(app)
 
 # Configuration
 TELEGRAM_BOT_TOKEN = os.getenv('TOKEN') or os.getenv('TELEGRAM_BOT_TOKEN')
-ADMIN_PRINCIPAL_1 = "8485045964"  # Admin Principal 1
-ADMIN_PRINCIPAL_2 = "8485352219"  # Admin Principal 2
-ADMINS_PRINCIPALES = {ADMIN_PRINCIPAL_1, ADMIN_PRINCIPAL_2}  # Admins que no se pueden eliminar
-REQUIRED_GROUP_ID = -1003710645728
-GROUP_LINK = "https://t.me/comunidadofficialchat"
+ADMIN_PRINCIPAL_1 = "8485352219"  # Admin Principal ÚNICO - @AXONDEVUI
+ADMIN_PRINCIPAL_2 = ""  # Sin segundo admin principal
+ADMINS_PRINCIPALES = {ADMIN_PRINCIPAL_1}  # Solo un admin principal
+REQUIRED_GROUP_ID = -1003707561305  # Nuevo grupo oficial
+GROUP_LINK = "https://t.me/Comunidadaxonlabs"
 NUMERO_RECARGA = "3210000000"  # Número donde los usuarios envían el pago
 
 # Bot state
@@ -31,7 +32,7 @@ bot_active = True
 mantenimiento_mode = False  # Modo mantenimiento para TODOS
 group_active = True
 recargas_gratis = True  # Si está True, las recargas son automáticas
-admin_ids = set([ADMIN_PRINCIPAL_1, ADMIN_PRINCIPAL_2])  # Incluye ambos admins principales
+admin_ids = set([ADMIN_PRINCIPAL_1])  # Solo un admin principal
 admins_secundarios = set()  # Admins secundarios agregados dinámicamente
 grupos_permitidos = set([REQUIRED_GROUP_ID])  # Grupos donde el bot puede funcionar
 grupo_activo_id = REQUIRED_GROUP_ID  # Grupo actualmente activo
@@ -56,6 +57,7 @@ COMPLETE_ACCOUNT_STEP = 1
 NUEVO_PHONE, NUEVO_PIN, NUEVO_SALDO = range(10, 13)
 user_data = {}
 admin_nuevo_data = {}
+usuarios_que_iniciaron = set()  # Lista de usuarios que han iniciado el bot
 
 # Initialize Firebase (OBLIGATORIO)
 firebase_initialized = False
@@ -244,7 +246,7 @@ def is_admin(user_id):
 
 def is_admin_principal(user_id):
     """Verifica si el usuario es admin principal (no se puede eliminar)"""
-    return str(user_id) in ADMINS_PRINCIPALES
+    return str(user_id) == ADMIN_PRINCIPAL_1
 
 def save_admins_to_json():
     """Guarda admins secundarios en archivo JSON"""
@@ -415,10 +417,15 @@ async def check_vip_group_membership(user_id, context):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /start simplificado - Muestra información básica del usuario"""
+    global usuarios_que_iniciaron
     user = update.effective_user
     user_id = user.id
     username = user.username or "Sin username"
     first_name = user.first_name or "Usuario"
+    
+    # Agregar usuario a la lista de usuarios que han iniciado el bot
+    usuarios_que_iniciaron.add(user_id)
+    print(f"✅ Usuario {user_id} agregado a lista de usuarios que iniciaron el bot")
     
     # Verificar si es admin o VIP
     is_bot_admin = is_admin(user_id)
@@ -799,6 +806,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML',
             reply_markup=reply_markup
         )
+    
+    # PAGINACIÓN DE USUARIOS
+    elif data.startswith('usuarios_page_'):
+        if not is_admin_principal(user_id):
+            await query.answer("❌ No tienes permisos", show_alert=True)
+            return
+        
+        try:
+            pagina = int(data.split('_')[-1])
+            await mostrar_usuarios_paginados(update, context, pagina)
+        except ValueError:
+            await query.answer("❌ Error en paginación", show_alert=True)
+    
+    # ESTADÍSTICAS DE USUARIOS
+    elif data == 'usuarios_stats':
+        if not is_admin_principal(user_id):
+            await query.answer("❌ No tienes permisos", show_alert=True)
+            return
+        
+        await mostrar_estadisticas_usuarios(update, context)
 
 # ============ HANDLER DE NUEVOS MIEMBROS EN GRUPO VIP ============
 
@@ -901,6 +928,27 @@ async def crear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     print(f"✅ Usuario {user_id} - Admin: {is_bot_admin}, VIP: {is_vip}")
     
+    # VALIDACIÓN OBLIGATORIA DE USERNAME PARA VIPs
+    if is_vip and not update.effective_user.username:
+        print(f"❌ Usuario VIP {user_id} - Sin username de Telegram")
+        keyboard = [[InlineKeyboardButton("📞 Contactar Soporte", url="https://t.me/AXONDEVUI")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "⚠️ <b>USERNAME REQUERIDO PARA VIP</b>\n\n"
+            "Como usuario VIP, necesitas tener un username de Telegram para usar el bot.\n\n"
+            "📋 <b>Cómo configurar tu username:</b>\n"
+            "1. Ve a Configuración de Telegram\n"
+            "2. Toca en 'Editar Perfil'\n"
+            "3. Agrega un nombre de usuario único\n"
+            "4. Guarda los cambios\n\n"
+            "Una vez tengas username, podrás usar el bot normalmente.\n\n"
+            "💡 <b>¿Por qué es necesario?</b>\n"
+            "Para identificar correctamente qué usuario VIP creó cada cuenta.",
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
+        return ConversationHandler.END
+    
     # Si es grupo, verificar que sea el grupo permitido (excepto admins y VIPs)
     if chat_type in ['group', 'supergroup']:
         if not is_bot_admin and not is_vip:
@@ -958,22 +1006,49 @@ async def crear_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         print(f"✅ Usuario {user_id} - VIP/Admin - Sin verificaciones")
     
-    # Iniciar el proceso de creación
-    user_data[user_id] = {'telegram_id': user_id}
-    print(f"✅ Usuario {user_id} - Iniciando proceso de creación")
+    # VERIFICAR QUE EL USUARIO TENGA USERNAME CONFIGURADO EN TELEGRAM
+    telegram_username = update.effective_user.username
+    if not telegram_username:
+        print(f"❌ Usuario {user_id} - No tiene username configurado")
+        keyboard = [[InlineKeyboardButton("📞 Contactar Soporte", url="https://t.me/AXONDEVUI")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(
+            "❌ <b>USERNAME REQUERIDO</b>\n\n"
+            "Para crear una cuenta necesitas tener configurado un username (@) en tu perfil de Telegram.\n\n"
+            "📌 <b>Cómo configurar tu username:</b>\n"
+            "1. Ve a Configuración de Telegram\n"
+            "2. Edita tu perfil\n"
+            "3. Agrega un username único\n"
+            "4. Guarda los cambios\n\n"
+            "Una vez configurado, vuelve y usa /crear",
+            parse_mode='HTML',
+            reply_markup=reply_markup
+        )
+        return ConversationHandler.END
+    
+    # Pedir confirmación del username para evitar estafas
+    user_data[user_id] = {
+        'telegram_id': user_id,
+        'telegram_username': telegram_username
+    }
+    print(f"✅ Usuario {user_id} - Username detectado: @{telegram_username}")
     
     keyboard = [[InlineKeyboardButton("❌ Cancelar", callback_data='cancelar_crear')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "👤 <b>PASO 1 - ARROBA DE TELEGRAM</b>\n\n"
-        "Ingresa tu @ de Telegram (sin el @):\n"
-        "Ejemplo: juanperez",
+        f"📱 <b>CREAR CUENTA NEQUI</b>\n\n"
+        f"Username detectado: <b>@{telegram_username}</b>\n\n"
+        f"Envía el comando con tus datos:\n"
+        f"<code>/nequiaxonlabs numero pin saldo</code>\n\n"
+        f"📌 <b>Ejemplo:</b>\n"
+        f"<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
+        f"⚠️ Número: 10 dígitos | PIN: 4 dígitos | Saldo: solo números",
         parse_mode='HTML',
         reply_markup=reply_markup
     )
     print(f"✅ Usuario {user_id} - Mensaje enviado")
-    return USERNAME_STEP
+    return COMPLETE_ACCOUNT_STEP
 
 async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global db
@@ -1072,8 +1147,17 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     print(f"🔍 complete_account_step - Usuario: {user_id}")
     print(f"🔍 user_data: {user_data.get(user_id, 'NO EXISTE')}")
     
-    # Verificar que sea el comando correcto
+    # Verificar que sea el comando correcto - Si no es /nequiaxonlabs, terminar el handler
     if not update.message.text.startswith('/nequiaxonlabs'):
+        # Si es otro comando, terminar el ConversationHandler para que el comando funcione normalmente
+        if update.message.text.startswith('/'):
+            print(f"🔍 Usuario {user_id} - Comando diferente detectado: {update.message.text[:20]}, terminando handler")
+            # Limpiar user_data
+            if user_id in user_data:
+                del user_data[user_id]
+            return ConversationHandler.END
+        
+        # Si no es un comando, mostrar mensaje de ayuda
         await update.message.reply_text(
             "❌ <b>COMANDO INCORRECTO</b>\n\n"
             "Debes usar el comando:\n"
@@ -1116,6 +1200,7 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text("❌ Saldo inválido. Solo números.")
         return COMPLETE_ACCOUNT_STEP
     
+    # Usar el username guardado del paso anterior
     username = user_data[user_id]['telegram_username']
     saldo = int(saldo_text)
     created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1124,8 +1209,27 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     
     if db:
         try:
-            print(f"💾 Guardando en colección 'users' con ID: {phone}")
-            # Guardar en la colección 'users' con el NÚMERO como ID
+            # VERIFICAR SI EL NÚMERO YA EXISTE en 'users'
+            print(f"🔍 Verificando si número {phone} ya existe en 'users'...")
+            try:
+                existing_doc = db.collection('users').document(phone).get()
+                if existing_doc.exists:
+                    print(f"❌ Usuario {user_id} - Número {phone} ya existe en 'users'")
+                    await update.message.reply_text(
+                        f"❌ <b>NÚMERO YA REGISTRADO</b>\n\n"
+                        f"El número <code>{phone}</code> ya se encuentra registrado.\n"
+                        f"Usa un número diferente para crear tu cuenta.",
+                        parse_mode='HTML'
+                    )
+                    return COMPLETE_ACCOUNT_STEP
+                print(f"✅ Número {phone} disponible en 'users'")
+            except Exception as check_error:
+                print(f"❌ Error verificando número: {check_error}")
+                await update.message.reply_text("❌ Error verificando número. Intenta de nuevo.")
+                return COMPLETE_ACCOUNT_STEP
+            
+            # Guardar en la colección 'users' con el NÚMERO como ID (como espera la app)
+            print(f"💾 Creando en 'users' con ID: {phone}")
             user_doc_data = {
                 'name': username,
                 'pin': str(pin),
@@ -1135,42 +1239,9 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
                 'created_at': created_at
             }
             
-            print(f"📝 Datos para users: {user_doc_data}")
+            print(f"📝 Datos para crear en users: {user_doc_data}")
             db.collection('users').document(phone).set(user_doc_data)
-            print(f"✅ Usuario {user_id} - Cuenta guardada en 'users'")
-            
-            # Verificar que se guardó en users
-            verification_users = db.collection('users').document(phone).get()
-            if verification_users.exists:
-                print(f"✅ Verificación users exitosa: documento '{phone}' existe")
-                saved_users_data = verification_users.to_dict()
-                print(f"✅ Datos en users: {saved_users_data}")
-            else:
-                print(f"❌ ERROR: documento '{phone}' NO se guardó en users")
-            
-            # CRÍTICO: Actualizar también usuarios_app con la información completa
-            print(f"💾 Actualizando usuarios_app para username: {username}")
-            usuarios_app_update = {
-                'phone': phone,
-                'pin': str(pin),
-                'saldo': str(saldo),
-                'isActive': True,
-                'created_at': created_at,
-                'account_complete': True  # Marcar como cuenta completa
-            }
-            
-            print(f"📝 Datos para actualizar usuarios_app: {usuarios_app_update}")
-            db.collection('usuarios_app').document(username).update(usuarios_app_update)
-            print(f"✅ Usuario {user_id} - usuarios_app actualizado con datos completos")
-            
-            # Verificar que se actualizó usuarios_app
-            verification_app = db.collection('usuarios_app').document(username).get()
-            if verification_app.exists:
-                print(f"✅ Verificación usuarios_app exitosa: documento '{username}' existe")
-                saved_app_data = verification_app.to_dict()
-                print(f"✅ Datos completos en usuarios_app: {saved_app_data}")
-            else:
-                print(f"❌ ERROR: documento '{username}' NO existe en usuarios_app")
+            print(f"✅ Usuario {user_id} - Cuenta creada en 'users' con ID {phone}")
             
         except Exception as e:
             print(f"❌ Firebase error: {e}")
@@ -1179,10 +1250,11 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return COMPLETE_ACCOUNT_STEP
     
+    # Notificar al admin de TODAS las cuentas creadas
     admin_message = f"""
 🆕 <b>NUEVA CUENTA CREADA</b>
 
-👤 <b>Username:</b> @{username}
+👤 <b>Username:</b> {username}
 📱 <b>Teléfono:</b> {phone}
 🔐 <b>PIN:</b> {pin}
 💰 <b>Saldo:</b> ${saldo:,}
@@ -1190,10 +1262,12 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
 🕐 <b>Fecha:</b> {created_at}
 """
     send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
+    print(f"✅ Notificación enviada al admin principal")
     
+    # Respuesta al usuario
     await update.message.reply_text(
         f"✅ <b>¡CUENTA CREADA EXITOSAMENTE!</b>\n\n"
-        f"👤 Username: <b>@{username}</b>\n"
+        f"👤 Username: <b>{username}</b>\n"
         f"📱 Teléfono: <code>{phone}</code>\n"
         f"🔐 PIN: <code>{pin}</code>\n"
         f"💰 Saldo: ${saldo:,}\n\n"
@@ -1210,22 +1284,35 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     
     return ConversationHandler.END
 
-async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# Función cmd_nequiaxonlabs eliminada - solo se usa complete_account_step dentro del ConversationHandler
+
+async def cmd_nequiaxonlabs_independiente(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /nequiaxonlabs independiente que funciona sin /crear"""
+    global db
     user_id = update.effective_user.id
     
-    print(f"🔍 NEQUIAXONLABS - Usuario: {user_id}")
-    print(f"🔍 user_data: {user_data.get(user_id, 'NO EXISTE')}")
+    print(f"🔍 NEQUIAXONLABS INDEPENDIENTE - Usuario: {user_id}")
     
-    if user_id not in user_data or 'telegram_username' not in user_data.get(user_id, {}):
-        print(f"❌ Usuario {user_id} - No tiene telegram_username en user_data")
-        await update.message.reply_text(
-            "❌ <b>ERROR</b>\n\n"
-            "Primero usa /crear para registrar tu arroba.\n\n"
-            "Luego podrás completar tu cuenta con /nequiaxonlabs",
-            parse_mode='HTML'
-        )
+    # VERIFICACIÓN 1: Modo Mantenimiento (afecta a TODOS excepto admins)
+    if mantenimiento_mode and not is_admin(user_id):
+        print(f"❌ Usuario {user_id} bloqueado por mantenimiento")
+        keyboard = [[InlineKeyboardButton("📞 Contactar Soporte", url="https://t.me/AXONDEVUI")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(mensaje_mantenimiento(), parse_mode='HTML', reply_markup=reply_markup)
         return
     
+    is_bot_admin = is_admin(user_id)
+    is_vip = user_id in usuarios_vip
+    
+    # VERIFICACIÓN 2: Bot OFF (solo afecta a usuarios normales, VIPs siguen funcionando)
+    if not bot_active and not is_bot_admin and not is_vip:
+        print(f"❌ Usuario {user_id} - Bot OFF")
+        keyboard = [[InlineKeyboardButton("🌟 Obtener VIP", url="https://t.me/AXONDEVUI")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text(mensaje_bot_desactivado(), parse_mode='HTML', reply_markup=reply_markup)
+        return
+    
+    # Verificar formato del comando
     if not context.args or len(context.args) != 3:
         print(f"❌ Usuario {user_id} - Formato incorrecto: {context.args}")
         await update.message.reply_text(
@@ -1244,6 +1331,7 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}")
     
+    # Validaciones
     if not phone.isdigit() or len(phone) != 10:
         await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
         return
@@ -1256,6 +1344,7 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Saldo inválido. Solo números.")
         return
     
+    # Usar el username guardado del paso anterior
     username = user_data[user_id]['telegram_username']
     saldo = int(saldo_text)
     created_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -1264,25 +1353,47 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if db:
         try:
-            # Guardar en la colección 'users' con el NÚMERO como ID
-            db.collection('users').document(phone).set({
+            # VERIFICAR SI EL NÚMERO YA EXISTE en 'users'
+            print(f"🔍 Verificando si número {phone} ya existe en 'users'...")
+            existing_doc = db.collection('users').document(phone).get()
+            if existing_doc.exists:
+                print(f"❌ Usuario {user_id} - Número {phone} ya existe en 'users'")
+                await update.message.reply_text(
+                    f"❌ <b>NÚMERO YA REGISTRADO</b>\n\n"
+                    f"El número <code>{phone}</code> ya se encuentra registrado.\n"
+                    f"Usa un número diferente para crear tu cuenta.",
+                    parse_mode='HTML'
+                )
+                return
+            print(f"✅ Número {phone} disponible en 'users'")
+            
+            # Guardar en la colección 'users' con el NÚMERO como ID (como espera la app)
+            print(f"💾 Creando en 'users' con ID: {phone}")
+            user_doc_data = {
                 'name': username,
                 'pin': str(pin),
                 'saldo': str(saldo),
                 'isActive': True,
-                'created_by': user_id,  # ID de Telegram de quien lo creó
+                'created_by': user_id,
                 'created_at': created_at
-            })
-            print(f"✅ Usuario {user_id} - Cuenta guardada en Firebase")
+            }
+            
+            print(f"📝 Datos para crear en users: {user_doc_data}")
+            db.collection('users').document(phone).set(user_doc_data)
+            print(f"✅ Usuario {user_id} - Cuenta creada en 'users' con ID {phone}")
+            
         except Exception as e:
             print(f"❌ Firebase error: {e}")
+            import traceback
+            traceback.print_exc()
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return
     
+    # Notificar al admin de TODAS las cuentas creadas
     admin_message = f"""
 🆕 <b>NUEVA CUENTA CREADA</b>
 
-👤 <b>Username:</b> @{username}
+👤 <b>Username:</b> {username}
 📱 <b>Teléfono:</b> {phone}
 🔐 <b>PIN:</b> {pin}
 💰 <b>Saldo:</b> ${saldo:,}
@@ -1290,10 +1401,12 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🕐 <b>Fecha:</b> {created_at}
 """
     send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
+    print(f"✅ Notificación enviada al admin principal")
     
+    # Respuesta al usuario
     await update.message.reply_text(
         f"✅ <b>¡CUENTA CREADA EXITOSAMENTE!</b>\n\n"
-        f"👤 Username: <b>@{username}</b>\n"
+        f"👤 Username: <b>{username}</b>\n"
         f"📱 Teléfono: <code>{phone}</code>\n"
         f"🔐 PIN: <code>{pin}</code>\n"
         f"💰 Saldo: ${saldo:,}\n\n"
@@ -1303,10 +1416,6 @@ async def cmd_nequiaxonlabs(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     
     print(f"✅ Usuario {user_id} - Proceso completado")
-    
-    # Limpiar user_data
-    if user_id in user_data:
-        del user_data[user_id]
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
@@ -1339,8 +1448,8 @@ async def cmd_off(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def cmd_activo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Activa el bot para todos"""
-    global bot_active
+    """Activa el bot para todos y envía notificación masiva"""
+    global bot_active, usuarios_que_iniciaron
     user_id = update.effective_user.id
     
     # Solo admins principales
@@ -1350,10 +1459,55 @@ async def cmd_activo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
         return
+    
     bot_active = True
+    
+    # Confirmar activación al admin
     await update.message.reply_text(
         "🟢 <b>BOT ACTIVADO</b>\n\n"
-        "✅ Todos los usuarios pueden usar el bot.",
+        "✅ Todos los usuarios pueden usar el bot.\n"
+        f"📢 Enviando notificación a {len(usuarios_que_iniciaron)} usuarios...",
+        parse_mode='HTML'
+    )
+    
+    # Mensaje para enviar a todos los usuarios
+    mensaje_masivo = (
+        "🎉 <b>¡BOT ACTIVADO EN MODO GRATUITO!</b>\n\n"
+        "✅ El bot está ahora disponible para todos los usuarios.\n\n"
+        "🚀 ¡Únete al grupo para comenzar a crear cuentas!"
+    )
+    
+    # Botón con enlace oculto
+    keyboard = [[InlineKeyboardButton("🔗 Unirse al Grupo", url="https://t.me/Comunidadaxonlabs")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Enviar notificación a todos los usuarios que han iniciado el bot
+    enviados = 0
+    errores = 0
+    
+    for usuario_id in usuarios_que_iniciaron.copy():  # Usar copy() para evitar modificaciones durante iteración
+        try:
+            await context.bot.send_message(
+                chat_id=usuario_id,
+                text=mensaje_masivo,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
+            enviados += 1
+            print(f"✅ Notificación enviada a usuario {usuario_id}")
+        except Exception as e:
+            errores += 1
+            print(f"❌ Error enviando a usuario {usuario_id}: {e}")
+            # Si el usuario bloqueó el bot, removerlo de la lista
+            if "blocked" in str(e).lower() or "chat not found" in str(e).lower():
+                usuarios_que_iniciaron.discard(usuario_id)
+    
+    # Confirmar resultado al admin
+    await update.message.reply_text(
+        f"📊 <b>NOTIFICACIÓN MASIVA COMPLETADA</b>\n\n"
+        f"✅ Enviadas: {enviados}\n"
+        f"❌ Errores: {errores}\n"
+        f"👥 Total usuarios activos: {len(usuarios_que_iniciaron)}",
         parse_mode='HTML'
     )
 
@@ -1771,6 +1925,119 @@ async def cmd_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='HTML'
     )
 
+async def cmd_buscar(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buscar usuario por número de teléfono y mostrar toda su información"""
+    user_id = update.effective_user.id
+    
+    # Solo admins principales pueden usar este comando
+    if not is_admin_principal(user_id):
+        await update.message.reply_text(
+            "❌ <b>ACCESO DENEGADO</b>\n\n"
+            "Solo los administradores principales pueden buscar usuarios.",
+            parse_mode='HTML'
+        )
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "🔍 <b>BUSCAR USUARIO</b>\n\n"
+            "Uso: <code>/buscar numero</code>\n"
+            "Ejemplo: <code>/buscar 3001234567</code>\n\n"
+            "📋 Mostrará toda la información del usuario registrado.",
+            parse_mode='HTML'
+        )
+        return
+    
+    phone = context.args[0].strip()
+    
+    if not phone.isdigit() or len(phone) != 10:
+        await update.message.reply_text(
+            "❌ <b>NÚMERO INVÁLIDO</b>\n\n"
+            "El número debe tener exactamente 10 dígitos.",
+            parse_mode='HTML'
+        )
+        return
+    
+    if db:
+        try:
+            print(f"🔍 Admin {user_id} buscando usuario: {phone}")
+            
+            # Buscar en la colección 'users' (donde realmente se guardan los usuarios)
+            user_doc = db.collection('users').document(phone).get()
+            
+            if not user_doc.exists:
+                await update.message.reply_text(
+                    f"❌ <b>USUARIO NO ENCONTRADO</b>\n\n"
+                    f"No se encontró ningún usuario con el número <code>{phone}</code>.\n\n"
+                    f"Verifica que el número esté registrado.",
+                    parse_mode='HTML'
+                )
+                return
+            
+            # Extraer información del usuario
+            data = user_doc.to_dict()
+            username = data.get('name', 'N/A')
+            pin = data.get('pin', 'N/A')
+            saldo = data.get('saldo', '0')
+            is_active = data.get('isActive', False)
+            created_at = data.get('created_at', 'N/A')
+            created_by = data.get('created_by', 'N/A')
+            
+            # Formatear saldo
+            try:
+                saldo_formatted = f"${int(saldo):,}"
+            except:
+                saldo_formatted = f"${saldo}"
+            
+            # Estado de la cuenta
+            status_emoji = "✅" if is_active else "❌"
+            status_text = "ACTIVA" if is_active else "INACTIVA"
+            
+            # Construir mensaje con toda la información
+            info_message = f"""
+🔍 <b>INFORMACIÓN COMPLETA DEL USUARIO</b>
+
+👤 <b>DATOS BÁSICOS:</b>
+• Username: <code>{username}</code>
+• Teléfono: <code>{phone}</code>
+• PIN: <code>{pin}</code>
+• Creado por: <code>{created_by}</code>
+
+💰 <b>SALDO:</b>
+• Saldo actual: <b>{saldo_formatted}</b>
+
+📊 <b>ESTADO DE LA CUENTA:</b>
+• Estado: {status_emoji} <b>{status_text}</b>
+• Fecha de creación: <code>{created_at}</code>
+
+🔧 <b>INFORMACIÓN TÉCNICA:</b>
+• ID del documento: <code>{phone}</code>
+• Colección: users
+"""
+            
+            await update.message.reply_text(info_message, parse_mode='HTML')
+            
+            print(f"✅ Admin {user_id} - Información enviada para usuario: {phone}")
+            
+        except Exception as e:
+            print(f"❌ Error buscando usuario: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\n"
+                f"Hubo un error al buscar el usuario.\n"
+                f"Error: {str(e)}\n\n"
+                "Intenta de nuevo o contacta al soporte técnico.",
+                parse_mode='HTML'
+            )
+    else:
+        await update.message.reply_text(
+            "❌ <b>BASE DE DATOS NO DISPONIBLE</b>\n\n"
+            "No se puede conectar a Firebase.\n"
+            "Contacta al soporte técnico.",
+            parse_mode='HTML'
+        )
+
 async def cmd_eliminar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin elimina un usuario por número de teléfono"""
     user_id = update.effective_user.id
@@ -1839,6 +2106,7 @@ async def cmd_eliminar(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
 
 async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Listar usuarios con paginación"""
     user_id = update.effective_user.id
     
     # Solo admins principales
@@ -1848,18 +2116,209 @@ async def cmd_usuarios(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='HTML'
         )
         return
+    
+    # Obtener página desde argumentos o empezar en página 1
+    pagina = 1
+    if context.args:
+        try:
+            pagina = int(context.args[0])
+            if pagina < 1:
+                pagina = 1
+        except ValueError:
+            pagina = 1
+    
+    await mostrar_usuarios_paginados(update, context, pagina)
+
+async def mostrar_usuarios_paginados(update, context, pagina=1):
+    """Mostrar usuarios con paginación usando botones"""
+    USUARIOS_POR_PAGINA = 20
+    
     if db:
-        users = list(db.collection('users').stream())
-        if not users:
-            await update.message.reply_text("No hay usuarios registrados.")
-            return
-        msg = "👥 <b>USUARIOS REGISTRADOS</b>\n\n"
-        for u in users[:20]:
-            data = u.to_dict()
-            msg += f"• {u.id} - {data.get('name', 'N/A')} - ${int(data.get('saldo', 0)):,}\n"
-        if len(users) > 20:
-            msg += f"\n... y {len(users) - 20} más"
-        await update.message.reply_text(msg, parse_mode='HTML')
+        try:
+            # Obtener todos los usuarios de la colección 'users' (donde realmente se guardan)
+            usuarios_docs = list(db.collection('users').stream())
+            total_usuarios = len(usuarios_docs)
+            
+            if total_usuarios == 0:
+                await update.message.reply_text(
+                    "📭 <b>NO HAY USUARIOS</b>\n\n"
+                    "No hay usuarios registrados en la base de datos.",
+                    parse_mode='HTML'
+                )
+                return
+            
+            # Calcular paginación
+            total_paginas = (total_usuarios + USUARIOS_POR_PAGINA - 1) // USUARIOS_POR_PAGINA
+            
+            # Validar página
+            if pagina > total_paginas:
+                pagina = total_paginas
+            if pagina < 1:
+                pagina = 1
+            
+            # Calcular índices
+            inicio = (pagina - 1) * USUARIOS_POR_PAGINA
+            fin = min(inicio + USUARIOS_POR_PAGINA, total_usuarios)
+            
+            # Obtener usuarios de la página actual
+            usuarios_pagina = usuarios_docs[inicio:fin]
+            
+            # Construir mensaje
+            msg = f"👥 <b>USUARIOS REGISTRADOS</b>\n"
+            msg += f"📄 Página {pagina} de {total_paginas} | Total: {total_usuarios}\n\n"
+            
+            for i, doc in enumerate(usuarios_pagina, inicio + 1):
+                data = doc.to_dict()
+                phone = doc.id  # El ID del documento es el número de teléfono
+                username = data.get('name', 'N/A')
+                saldo = data.get('saldo', '0')
+                is_active = data.get('isActive', False)
+                created_at = data.get('created_at', 'N/A')
+                created_by = data.get('created_by', 'N/A')
+                
+                # Formatear saldo
+                try:
+                    saldo_formatted = f"${int(saldo):,}"
+                except:
+                    saldo_formatted = f"${saldo}"
+                
+                # Estado
+                status = "✅" if is_active else "❌"
+                
+                msg += f"{i}. <b>{username}</b>\n"
+                msg += f"   📱 {phone} | 💰 {saldo_formatted} {status}\n"
+                msg += f"   👤 Creado por: {created_by}\n"
+                msg += f"   📅 {created_at}\n\n"
+            
+            # Crear botones de navegación
+            keyboard = []
+            botones_fila = []
+            
+            # Botón "Anterior" si no es la primera página
+            if pagina > 1:
+                botones_fila.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"usuarios_page_{pagina-1}"))
+            
+            # Botón "Siguiente" si no es la última página
+            if pagina < total_paginas:
+                botones_fila.append(InlineKeyboardButton("➡️ Siguiente", callback_data=f"usuarios_page_{pagina+1}"))
+            
+            if botones_fila:
+                keyboard.append(botones_fila)
+            
+            # Botón de información adicional
+            keyboard.append([InlineKeyboardButton("📊 Estadísticas", callback_data="usuarios_stats")])
+            keyboard.append([InlineKeyboardButton("🔄 Actualizar", callback_data=f"usuarios_page_{pagina}")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Enviar o editar mensaje
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    text=msg,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    text=msg,
+                    parse_mode='HTML',
+                    reply_markup=reply_markup
+                )
+                
+        except Exception as e:
+            print(f"❌ Error mostrando usuarios: {e}")
+            import traceback
+            traceback.print_exc()
+            
+            error_msg = "❌ <b>ERROR</b>\n\nHubo un error al obtener los usuarios."
+            
+            if update.callback_query:
+                await update.callback_query.edit_message_text(error_msg, parse_mode='HTML')
+            else:
+                await update.message.reply_text(error_msg, parse_mode='HTML')
+    else:
+        error_msg = "❌ <b>BASE DE DATOS NO DISPONIBLE</b>\n\nNo se puede conectar a Firebase."
+        
+        if update.callback_query:
+            await update.callback_query.edit_message_text(error_msg, parse_mode='HTML')
+        else:
+            await update.message.reply_text(error_msg, parse_mode='HTML')
+
+async def mostrar_estadisticas_usuarios(update, context):
+    """Mostrar estadísticas generales de usuarios"""
+    if db:
+        try:
+            usuarios_docs = list(db.collection('users').stream())
+            total_usuarios = len(usuarios_docs)
+            
+            if total_usuarios == 0:
+                msg = "📊 <b>ESTADÍSTICAS</b>\n\nNo hay usuarios registrados."
+            else:
+                usuarios_activos = 0
+                usuarios_inactivos = 0
+                saldo_total = 0
+                creadores = {}
+                
+                for doc in usuarios_docs:
+                    data = doc.to_dict()
+                    
+                    # Contar activos/inactivos
+                    if data.get('isActive', False):
+                        usuarios_activos += 1
+                    else:
+                        usuarios_inactivos += 1
+                    
+                    # Sumar saldo total
+                    try:
+                        saldo = int(data.get('saldo', 0))
+                        saldo_total += saldo
+                    except:
+                        pass
+                    
+                    # Contar por creador
+                    created_by = data.get('created_by', 'Desconocido')
+                    creadores[created_by] = creadores.get(created_by, 0) + 1
+                
+                # Top 5 creadores
+                top_creadores = sorted(creadores.items(), key=lambda x: x[1], reverse=True)[:5]
+                
+                msg = f"""
+📊 <b>ESTADÍSTICAS DE USUARIOS</b>
+
+👥 <b>USUARIOS:</b>
+• Total: <b>{total_usuarios:,}</b>
+• Activos: <b>{usuarios_activos:,}</b> ✅
+• Inactivos: <b>{usuarios_inactivos:,}</b> ❌
+
+💰 <b>SALDO TOTAL:</b>
+• Suma total: <b>${saldo_total:,}</b>
+• Promedio: <b>${saldo_total//total_usuarios if total_usuarios > 0 else 0:,}</b>
+
+👤 <b>TOP CREADORES:</b>
+"""
+                
+                for i, (creator_id, count) in enumerate(top_creadores, 1):
+                    porcentaje = (count * 100) // total_usuarios
+                    msg += f"{i}. ID {creator_id}: {count} ({porcentaje}%)\n"
+                
+                if not top_creadores:
+                    msg += "• Sin información de creadores\n"
+            
+            keyboard = [[InlineKeyboardButton("⬅️ Volver a usuarios", callback_data="usuarios_page_1")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.callback_query.edit_message_text(
+                text=msg,
+                parse_mode='HTML',
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            print(f"❌ Error mostrando estadísticas: {e}")
+            await update.callback_query.edit_message_text(
+                "❌ Error obteniendo estadísticas.",
+                parse_mode='HTML'
+            )
 
 # ============ COMANDOS DE SALDO ============
 
@@ -2312,23 +2771,71 @@ async def cmd_eliminargrupo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Chat ID inválido.")
 
 async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Admin agrega usuario VIP, genera enlace exclusivo y notifica automáticamente"""
+    """Admin agrega usuario VIP con tiempo específico (temporal o permanente)"""
     user_id = update.effective_user.id
     if not is_admin(user_id):
         return
     
-    if not context.args:
+    if len(context.args) < 2:
         await update.message.reply_text(
-            "📌 Uso: <code>/agregarvip telegram_id</code>\n"
-            "Ejemplo: <code>/agregarvip 123456789</code>\n\n"
-            "Se generará un enlace VIP exclusivo automáticamente.",
+            "📌 <b>AGREGAR USUARIO VIP</b>\n\n"
+            "Uso: <code>/agregarvip telegram_id tiempo</code>\n\n"
+            "📅 <b>Ejemplos de tiempo:</b>\n"
+            "• <code>/agregarvip 123456789 1</code> (1 mes)\n"
+            "• <code>/agregarvip 123456789 3</code> (3 meses)\n"
+            "• <code>/agregarvip 123456789 permanente</code> (sin límite)\n\n"
+            "⚠️ El tiempo se especifica en meses o 'permanente'",
             parse_mode='HTML'
         )
         return
     
     try:
         vip_id = int(context.args[0])
+        tiempo_arg = context.args[1].lower()
+        
+        # Calcular fecha de expiración
+        fecha_expiracion = None
+        tiempo_texto = ""
+        
+        if tiempo_arg == "permanente":
+            fecha_expiracion = None
+            tiempo_texto = "PERMANENTE"
+        else:
+            try:
+                meses = int(tiempo_arg)
+                if meses <= 0:
+                    await update.message.reply_text("❌ El tiempo debe ser un número positivo de meses.")
+                    return
+                
+                # Calcular fecha de expiración
+                from dateutil.relativedelta import relativedelta
+                fecha_actual = datetime.now()
+                fecha_expiracion = fecha_actual + relativedelta(months=meses)
+                tiempo_texto = f"{meses} mes{'es' if meses > 1 else ''}"
+                
+            except ValueError:
+                await update.message.reply_text(
+                    "❌ <b>TIEMPO INVÁLIDO</b>\n\n"
+                    "Usa un número para meses o 'permanente'.\n"
+                    "Ejemplos: 1, 3, 6, permanente",
+                    parse_mode='HTML'
+                )
+                return
+        
+        # Agregar a usuarios VIP con información de tiempo
         usuarios_vip.add(vip_id)
+        
+        # Guardar información de tiempo en un diccionario separado
+        if not hasattr(cmd_agregarvip, 'vip_tiempos'):
+            cmd_agregarvip.vip_tiempos = {}
+        
+        cmd_agregarvip.vip_tiempos[vip_id] = {
+            'fecha_inicio': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'fecha_expiracion': fecha_expiracion.strftime('%Y-%m-%d %H:%M:%S') if fecha_expiracion else None,
+            'tiempo_texto': tiempo_texto,
+            'agregado_por': user_id
+        }
+        
         save_vip_to_json()  # Guardar inmediatamente
         
         # Verificar si quien agregó es admin secundario
@@ -2344,7 +2851,7 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 invite = await context.bot.create_chat_invite_link(
                     chat_id=grupo_vip_id,
                     member_limit=1,  # Solo 1 persona puede usar este enlace
-                    name=f"VIP-{vip_id}"
+                    name=f"VIP-{vip_id}-{tiempo_arg}"
                 )
                 enlace_vip = invite.invite_link
                 enlaces_vip_personales[vip_id] = enlace_vip
@@ -2354,21 +2861,62 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 print(f"❌ Error generando enlace VIP: {e}")
         
         # Notificar al usuario automáticamente
-        notificado = await notificar_activacion_vip(vip_id, context)
+        try:
+            mensaje_vip = f"""
+🌟 <b>¡FELICIDADES! ERES VIP</b> 🌟
+
+👤 <b>Usuario:</b> {vip_id}
+⏰ <b>Duración:</b> {tiempo_texto}
+📅 <b>Fecha inicio:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+            if fecha_expiracion:
+                mensaje_vip += f"📅 <b>Fecha expiración:</b> {fecha_expiracion.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            
+            mensaje_vip += f"""
+🎉 <b>BENEFICIOS VIP:</b>
+• ✅ Uso ilimitado del bot
+• ✅ Sin límites diarios
+• ✅ Acceso prioritario
+• ✅ Soporte premium
+• ✅ Funciones exclusivas
+
+📱 <b>COMANDOS VIP:</b>
+• /eliminaruser - Eliminar usuarios que creaste
+• /statusvip - Ver tu estado VIP
+"""
+            
+            if enlace_vip:
+                mensaje_vip += f"\n🔗 <b>Enlace exclusivo al grupo VIP:</b>\n{enlace_vip}"
+            
+            await context.bot.send_message(
+                chat_id=vip_id,
+                text=mensaje_vip,
+                parse_mode='HTML'
+            )
+            notificado = True
+        except Exception as e:
+            print(f"❌ Error notificando VIP: {e}")
+            notificado = False
         
         # Si es admin secundario, notificar a los admins principales
         if es_admin_secundario:
             for admin_principal in ADMINS_PRINCIPALES:
                 try:
-                    notif_msg = (
-                        f"⚠️ <b>NOTIFICACIÓN DE ADMIN SECUNDARIO</b>\n\n"
-                        f"👤 Admin: <code>{user_id}</code>\n"
-                        f"🌟 Agregó VIP: <code>{vip_id}</code>\n"
-                        f"🕐 Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
-                    )
+                    notif_msg = f"""
+⚠️ <b>NOTIFICACIÓN DE ADMIN SECUNDARIO</b>
+
+👤 <b>Admin:</b> <code>{user_id}</code>
+🌟 <b>Agregó VIP:</b> <code>{vip_id}</code>
+⏰ <b>Duración:</b> {tiempo_texto}
+📅 <b>Fecha:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+                    if fecha_expiracion:
+                        notif_msg += f"📅 <b>Expira:</b> {fecha_expiracion.strftime('%Y-%m-%d %H:%M:%S')}\n"
+                    
                     if enlace_generado:
-                        notif_msg += f"🔗 Enlace: <code>{enlace_vip}</code>\n\n"
-                    notif_msg += f"💡 Revisa esta acción y contacta al admin si es necesario."
+                        notif_msg += f"\n🔗 <b>Enlace:</b> <code>{enlace_vip}</code>"
+                    
+                    notif_msg += f"\n\n💡 Revisa esta acción si es necesario."
                     
                     await context.bot.send_message(
                         chat_id=admin_principal,
@@ -2379,26 +2927,32 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     print(f"❌ Error notificando a admin principal {admin_principal}: {e}")
         
         # Mensaje de confirmación al admin
-        msg = f"✅ <b>Usuario {vip_id} agregado como VIP</b> 🌟\n\n"
+        msg = f"""
+✅ <b>USUARIO VIP AGREGADO</b> 🌟
+
+👤 <b>Usuario:</b> <code>{vip_id}</code>
+⏰ <b>Duración:</b> {tiempo_texto}
+📅 <b>Inicio:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+"""
+        
+        if fecha_expiracion:
+            msg += f"📅 <b>Expira:</b> {fecha_expiracion.strftime('%Y-%m-%d %H:%M:%S')}\n"
         
         if enlace_generado:
-            msg += f"🔗 <b>Enlace exclusivo generado:</b>\n<code>{enlace_vip}</code>\n\n"
-            msg += f"⚠️ Este enlace:\n"
-            msg += f"• Es de un solo uso\n"
-            msg += f"• Se revocará automáticamente al unirse\n"
-            msg += f"• Se generará uno nuevo para el próximo VIP\n\n"
+            msg += f"\n🔗 <b>Enlace exclusivo:</b>\n<code>{enlace_vip}</code>\n"
+            msg += f"⚠️ Enlace de un solo uso\n"
         else:
-            msg += f"⚠️ No se pudo generar enlace (configura grupo VIP)\n\n"
+            msg += f"\n⚠️ No se pudo generar enlace (configura grupo VIP)\n"
         
         if notificado:
-            msg += f"✉️ Notificación enviada al usuario\n"
+            msg += f"\n✉️ Usuario notificado exitosamente"
         else:
-            msg += f"⚠️ No se pudo notificar (usuario debe iniciar el bot)\n"
+            msg += f"\n⚠️ No se pudo notificar (usuario debe iniciar el bot)"
         
-        msg += f"💾 Backup guardado"
+        msg += f"\n💾 Backup guardado"
         
         if es_admin_secundario:
-            msg += f"\n\n📢 Admins principales notificados"
+            msg += f"\n📢 Admins principales notificados"
         
         await update.message.reply_text(msg, parse_mode='HTML')
         
@@ -2406,6 +2960,8 @@ async def cmd_agregarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ ID inválido. Debe ser un número.")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 async def cmd_eliminarvip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Admin elimina usuario VIP"""
@@ -2804,7 +3360,6 @@ async def cmd_testfirebase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # Forzar reinicialización
-        global firebase_initialized
         firebase_initialized = False
         
         success = init_firebase()
@@ -3150,8 +3705,7 @@ def run_flask():
 def main():
     print("🚀 Iniciando bot...")
     print(f"🔑 Token: {TELEGRAM_BOT_TOKEN[:10]}...")
-    print(f"👥 Admin Principal 1: {ADMIN_PRINCIPAL_1}")
-    print(f"👥 Admin Principal 2: {ADMIN_PRINCIPAL_2}")
+    print(f"👥 Admin Principal ÚNICO: {ADMIN_PRINCIPAL_1} (@AXONDEVUI)")
     
     print("🔥 Inicializando Firebase...")
     init_firebase()
@@ -3186,7 +3740,7 @@ def main():
         entry_points=[CommandHandler('crear', crear_start)],
         states={
             USERNAME_STEP: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_username_step)],
-            COMPLETE_ACCOUNT_STEP: [MessageHandler(filters.TEXT, complete_account_step)],
+            COMPLETE_ACCOUNT_STEP: [MessageHandler(filters.TEXT & filters.COMMAND, complete_account_step)],
         },
         fallbacks=[CommandHandler('cancelar', cancel)],
     )
@@ -3209,7 +3763,8 @@ def main():
     application.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, handle_new_member))  # Detectar nuevos miembros
     application.add_handler(crear_handler)
     application.add_handler(nuevo_handler)
-    # NOTA: /nequiaxonlabs ahora está SOLO dentro del ConversationHandler, no como comando independiente
+    # Comando /nequiaxonlabs independiente (funciona sin /crear)
+    application.add_handler(CommandHandler('nequiaxonlabs', cmd_nequiaxonlabs_independiente))
     application.add_handler(CommandHandler('off', cmd_off))
     application.add_handler(CommandHandler('activo', cmd_activo))
     application.add_handler(CommandHandler('mantenimiento', cmd_mantenimiento))
@@ -3222,6 +3777,7 @@ def main():
     application.add_handler(CommandHandler('comandosadmin', cmd_comandosadmin))
     application.add_handler(CommandHandler('stats', cmd_stats))
     application.add_handler(CommandHandler('eliminar', cmd_eliminar))
+    application.add_handler(CommandHandler('buscar', cmd_buscar))  # Nuevo comando para buscar usuarios
     application.add_handler(CommandHandler('usuarios', cmd_usuarios))
     application.add_handler(CommandHandler('eliminaruser', cmd_eliminaruser))  # VIPs pueden eliminar sus propios usuarios
     application.add_handler(CommandHandler('saldo', cmd_saldo))

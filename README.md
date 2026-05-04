@@ -13,9 +13,8 @@ TOKEN=tu_token_de_telegram
 
 3. **Configurar IDs en `main.py`**:
 ```python
-ADMIN_PRINCIPAL_1 = "8485045964"
-ADMIN_PRINCIPAL_2 = "8485352219"
-REQUIRED_GROUP_ID = -1003710645728
+ADMIN_PRINCIPAL_1 = "8485352219"  # @AXONDEVUI - Admin Principal ÚNICO
+REQUIRED_GROUP_ID = -1003707561305  # Nuevo grupo oficial
 grupo_vip_id = -1003875617504
 ```
 
