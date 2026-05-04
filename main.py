@@ -114,26 +114,63 @@ def init_firebase():
     print("🔥 INICIANDO FIREBASE...")
     
     try:
-        # Verificar si hay credenciales en variable de entorno
+        # Verificar si hay credenciales en variable de entorno PRIMERO
         firebase_creds_env = os.getenv('FIREBASE_CREDENTIALS')
         
         if firebase_creds_env:
-            print("✅ Credenciales encontradas en variable de entorno")
-            # Crear archivo temporal con las credenciales
-            import json
-            creds_data = json.loads(firebase_creds_env)
-            
-            with open('firebase_credentials_temp.json', 'w') as f:
-                json.dump(creds_data, f)
-            
-            credentials_file = 'firebase_credentials_temp.json'
+            print("✅ Credenciales encontradas en variable de entorno FIREBASE_CREDENTIALS")
+            try:
+                # Crear archivo temporal con las credenciales
+                import json
+                
+                # Limpiar la cadena de caracteres de control problemáticos
+                # Reemplazar literales \n con saltos de línea reales
+                firebase_creds_clean = firebase_creds_env.replace('\\n', '\n')
+                
+                print(f"🔍 Longitud de credenciales: {len(firebase_creds_clean)} caracteres")
+                
+                creds_data = json.loads(firebase_creds_clean)
+                
+                # Validar que tenga los campos necesarios
+                required_fields = ['type', 'project_id', 'private_key', 'client_email']
+                for field in required_fields:
+                    if field not in creds_data:
+                        print(f"❌ Campo requerido '{field}' no encontrado en FIREBASE_CREDENTIALS")
+                        return False
+                
+                print(f"✅ JSON parseado correctamente")
+                print(f"✅ Proyecto: {creds_data.get('project_id')}")
+                print(f"✅ Email: {creds_data.get('client_email')}")
+                
+                with open('firebase_credentials_temp.json', 'w') as f:
+                    json.dump(creds_data, f, indent=2)
+                
+                credentials_file = 'firebase_credentials_temp.json'
+                print(f"✅ Archivo temporal creado: {credentials_file}")
+                
+            except json.JSONDecodeError as e:
+                print(f"❌ Error parseando FIREBASE_CREDENTIALS JSON: {e}")
+                print(f"❌ Posición del error: línea {e.lineno}, columna {e.colno}")
+                print(f"❌ Mensaje: {e.msg}")
+                # Mostrar un fragmento alrededor del error
+                if hasattr(e, 'pos') and e.pos:
+                    start = max(0, e.pos - 50)
+                    end = min(len(firebase_creds_env), e.pos + 50)
+                    print(f"❌ Fragmento: ...{firebase_creds_env[start:end]}...")
+                return False
+            except Exception as e:
+                print(f"❌ Error procesando FIREBASE_CREDENTIALS: {e}")
+                import traceback
+                traceback.print_exc()
+                return False
             
         elif os.path.exists('firebase_credentials.json'):
-            print("✅ Archivo de credenciales encontrado")
+            print("✅ Archivo de credenciales local encontrado")
             credentials_file = 'firebase_credentials.json'
             
         else:
             print("❌ No se encontraron credenciales de Firebase")
+            print("❌ Verificar variable FIREBASE_CREDENTIALS o archivo firebase_credentials.json")
             return False
         
         # Leer y mostrar información del proyecto

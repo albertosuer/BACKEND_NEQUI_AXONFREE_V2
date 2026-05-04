@@ -33,9 +33,12 @@ env/
 
 # Firebase Credentials (IMPORTANTE: No subir a GitHub)
 firebase_credentials.json
+firebase_config.json
+firebase_credentials_temp.json
 
 # Backup Files
 usuariosvip.json
+admins_secundarios.json
 *.backup
 *.bak
 
