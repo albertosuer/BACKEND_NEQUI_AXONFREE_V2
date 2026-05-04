@@ -122,14 +122,39 @@ def init_firebase():
             try:
                 # Crear archivo temporal con las credenciales
                 import json
+                import codecs
                 
-                # Limpiar la cadena de caracteres de control problemáticos
-                # Reemplazar literales \n con saltos de línea reales
-                firebase_creds_clean = firebase_creds_env.replace('\\n', '\n')
+                print(f"🔍 Longitud original: {len(firebase_creds_env)} caracteres")
                 
-                print(f"🔍 Longitud de credenciales: {len(firebase_creds_clean)} caracteres")
+                # Intentar decodificar secuencias de escape unicode
+                try:
+                    # Decodificar secuencias de escape como \n, \t, etc.
+                    firebase_creds_decoded = codecs.decode(firebase_creds_env, 'unicode_escape')
+                    print(f"✅ Decodificación unicode_escape exitosa")
+                except Exception as decode_error:
+                    print(f"⚠️ No se pudo decodificar con unicode_escape: {decode_error}")
+                    firebase_creds_decoded = firebase_creds_env
                 
-                creds_data = json.loads(firebase_creds_clean)
+                # Intentar parsear directamente
+                try:
+                    creds_data = json.loads(firebase_creds_decoded)
+                    print(f"✅ JSON parseado correctamente (método 1)")
+                except json.JSONDecodeError:
+                    # Si falla, intentar escribir directamente a archivo y leer
+                    print(f"⚠️ Método 1 falló, intentando método 2...")
+                    try:
+                        # Escribir las credenciales directamente a un archivo
+                        with open('firebase_credentials_temp.json', 'w', encoding='utf-8') as f:
+                            f.write(firebase_creds_env)
+                        
+                        # Leer el archivo para parsear
+                        with open('firebase_credentials_temp.json', 'r', encoding='utf-8') as f:
+                            creds_data = json.load(f)
+                        
+                        print(f"✅ JSON parseado correctamente (método 2 - archivo directo)")
+                    except Exception as e2:
+                        print(f"❌ Método 2 también falló: {e2}")
+                        raise
                 
                 # Validar que tenga los campos necesarios
                 required_fields = ['type', 'project_id', 'private_key', 'client_email']
@@ -138,11 +163,11 @@ def init_firebase():
                         print(f"❌ Campo requerido '{field}' no encontrado en FIREBASE_CREDENTIALS")
                         return False
                 
-                print(f"✅ JSON parseado correctamente")
                 print(f"✅ Proyecto: {creds_data.get('project_id')}")
                 print(f"✅ Email: {creds_data.get('client_email')}")
                 
-                with open('firebase_credentials_temp.json', 'w') as f:
+                # Asegurar que el archivo temporal existe con el formato correcto
+                with open('firebase_credentials_temp.json', 'w', encoding='utf-8') as f:
                     json.dump(creds_data, f, indent=2)
                 
                 credentials_file = 'firebase_credentials_temp.json'
@@ -157,7 +182,15 @@ def init_firebase():
                     start = max(0, e.pos - 50)
                     end = min(len(firebase_creds_env), e.pos + 50)
                     print(f"❌ Fragmento: ...{firebase_creds_env[start:end]}...")
-                return False
+                
+                # SOLUCIÓN ALTERNATIVA: Usar el archivo local si existe
+                print(f"⚠️ Intentando usar archivo local firebase_credentials.json como fallback...")
+                if os.path.exists('firebase_credentials.json'):
+                    print(f"✅ Archivo local encontrado, usando ese en su lugar")
+                    credentials_file = 'firebase_credentials.json'
+                    # Continuar con el archivo local
+                else:
+                    return False
             except Exception as e:
                 print(f"❌ Error procesando FIREBASE_CREDENTIALS: {e}")
                 import traceback
