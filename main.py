@@ -114,15 +114,30 @@ def init_firebase():
     print("🔥 INICIANDO FIREBASE...")
     
     try:
-        # Verificar archivo de credenciales
-        if not os.path.exists('firebase_credentials.json'):
-            print("❌ firebase_credentials.json NO EXISTE")
+        # Verificar si hay credenciales en variable de entorno
+        firebase_creds_env = os.getenv('FIREBASE_CREDENTIALS')
+        
+        if firebase_creds_env:
+            print("✅ Credenciales encontradas en variable de entorno")
+            # Crear archivo temporal con las credenciales
+            import json
+            creds_data = json.loads(firebase_creds_env)
+            
+            with open('firebase_credentials_temp.json', 'w') as f:
+                json.dump(creds_data, f)
+            
+            credentials_file = 'firebase_credentials_temp.json'
+            
+        elif os.path.exists('firebase_credentials.json'):
+            print("✅ Archivo de credenciales encontrado")
+            credentials_file = 'firebase_credentials.json'
+            
+        else:
+            print("❌ No se encontraron credenciales de Firebase")
             return False
         
-        print("✅ Archivo de credenciales encontrado")
-        
         # Leer y mostrar información del proyecto
-        with open('firebase_credentials.json', 'r') as f:
+        with open(credentials_file, 'r') as f:
             import json
             creds_data = json.load(f)
             project_id = creds_data.get('project_id', 'DESCONOCIDO')
@@ -130,10 +145,9 @@ def init_firebase():
             print(f"📋 Proyecto Firebase: {project_id}")
             print(f"📧 Email del servicio: {client_email}")
         
-        # Configurar variable de entorno si no existe
-        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'firebase_credentials.json'
-            print("✅ Variable GOOGLE_APPLICATION_CREDENTIALS configurada")
+        # Configurar variable de entorno
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_file
+        print("✅ Variable GOOGLE_APPLICATION_CREDENTIALS configurada")
         
         # Limpiar cualquier inicialización previa
         try:
@@ -144,7 +158,7 @@ def init_firebase():
             pass  # No hay app previa
         
         # Inicializar Firebase
-        cred = credentials.Certificate('firebase_credentials.json')
+        cred = credentials.Certificate(credentials_file)
         firebase_admin.initialize_app(cred)
         
         # Crear cliente Firestore
@@ -167,6 +181,11 @@ def init_firebase():
         # Limpiar test
         test_doc_ref.delete()
         print("✅ Test de eliminación exitoso")
+        
+        # Limpiar archivo temporal si se creó
+        if firebase_creds_env and os.path.exists('firebase_credentials_temp.json'):
+            os.remove('firebase_credentials_temp.json')
+            print("✅ Archivo temporal de credenciales eliminado")
         
         return True
         
