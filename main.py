@@ -121,6 +121,15 @@ def init_firebase():
         
         print("✅ Archivo de credenciales encontrado")
         
+        # Leer y mostrar información del proyecto
+        with open('firebase_credentials.json', 'r') as f:
+            import json
+            creds_data = json.load(f)
+            project_id = creds_data.get('project_id', 'DESCONOCIDO')
+            client_email = creds_data.get('client_email', 'DESCONOCIDO')
+            print(f"📋 Proyecto Firebase: {project_id}")
+            print(f"📧 Email del servicio: {client_email}")
+        
         # Configurar variable de entorno si no existe
         if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
             os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = 'firebase_credentials.json'
@@ -144,10 +153,20 @@ def init_firebase():
         
         print("✅ FIREBASE INICIALIZADO CORRECTAMENTE")
         
-        # Test básico
-        test_collection = db.collection('usuarios_app').limit(1)
+        # Test básico más detallado
+        print("🔍 Probando conexión a Firestore...")
+        test_collection = db.collection('users').limit(1)
         docs = test_collection.get()
-        print(f"✅ Test conexión: {len(docs)} documentos encontrados")
+        print(f"✅ Test conexión 'users': {len(docs)} documentos encontrados")
+        
+        # Test de escritura
+        test_doc_ref = db.collection('test').document('connection_test')
+        test_doc_ref.set({'timestamp': datetime.now().isoformat(), 'status': 'connected'})
+        print("✅ Test de escritura exitoso")
+        
+        # Limpiar test
+        test_doc_ref.delete()
+        print("✅ Test de eliminación exitoso")
         
         return True
         
@@ -157,8 +176,11 @@ def init_firebase():
         
         # Información adicional para debugging
         import sys
+        import traceback
         print(f"❌ Python version: {sys.version}")
         print(f"❌ Working directory: {os.getcwd()}")
+        print(f"❌ Traceback completo:")
+        traceback.print_exc()
         
         firebase_initialized = False
         db = None
@@ -1225,7 +1247,7 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
                 print(f"✅ Número {phone} disponible en 'users'")
             except Exception as check_error:
                 print(f"❌ Error verificando número: {check_error}")
-                await update.message.reply_text("❌ Error verificando número. Intenta de nuevo.")
+                await update.message.reply_text("❌ Error de conexión con Firebase. Intenta de nuevo.")
                 return COMPLETE_ACCOUNT_STEP
             
             # Guardar en la colección 'users' con el NÚMERO como ID (como espera la app)
@@ -1241,14 +1263,27 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
             
             print(f"📝 Datos para crear en users: {user_doc_data}")
             db.collection('users').document(phone).set(user_doc_data)
-            print(f"✅ Usuario {user_id} - Cuenta creada en 'users' con ID {phone}")
+            print(f"✅ Usuario {user_id} - Cuenta guardada en Firebase")
+            
+            # VERIFICAR QUE SE GUARDÓ CORRECTAMENTE
+            verification_doc = db.collection('users').document(phone).get()
+            if not verification_doc.exists:
+                print(f"❌ ERROR: La cuenta NO se guardó en Firebase")
+                await update.message.reply_text("❌ Error al guardar la cuenta. Intenta de nuevo.")
+                return COMPLETE_ACCOUNT_STEP
+            
+            print(f"✅ VERIFICACIÓN EXITOSA: Cuenta guardada correctamente en Firebase")
             
         except Exception as e:
             print(f"❌ Firebase error: {e}")
             import traceback
             traceback.print_exc()
-            await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
+            await update.message.reply_text("❌ Error de Firebase. Intenta de nuevo más tarde.")
             return COMPLETE_ACCOUNT_STEP
+    else:
+        print(f"❌ ERROR: Firebase no está conectado")
+        await update.message.reply_text("❌ Error de conexión. Intenta de nuevo más tarde.")
+        return COMPLETE_ACCOUNT_STEP
     
     # Notificar al admin SOLO si NO es el admin quien crea la cuenta
     if str(user_id) != ADMIN_PRINCIPAL_1:
