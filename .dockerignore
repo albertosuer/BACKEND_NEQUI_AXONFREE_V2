@@ -1,0 +1,14 @@
+.git
+.gitignore
+README.md
+.env
+*.pyc
+*.pyo
+*.pyd
+__pycache__
+.pytest_cache
+.coverage
+.nyc_output
+node_modules
+.DS_Store
+*.log
