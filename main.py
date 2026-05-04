@@ -1250,8 +1250,9 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return COMPLETE_ACCOUNT_STEP
     
-    # Notificar al admin de TODAS las cuentas creadas
-    admin_message = f"""
+    # Notificar al admin SOLO si NO es el admin quien crea la cuenta
+    if str(user_id) != ADMIN_PRINCIPAL_1:
+        admin_message = f"""
 🆕 <b>NUEVA CUENTA CREADA</b>
 
 👤 <b>Username:</b> {username}
@@ -1261,8 +1262,10 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
 🆔 <b>Telegram ID:</b> {user_id}
 🕐 <b>Fecha:</b> {created_at}
 """
-    send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
-    print(f"✅ Notificación enviada al admin principal")
+        send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
+        print(f"✅ Notificación enviada al admin principal")
+    else:
+        print(f"✅ Admin creando cuenta propia - Sin notificación")
     
     # Respuesta al usuario
     await update.message.reply_text(
@@ -1389,8 +1392,9 @@ async def cmd_nequiaxonlabs_independiente(update: Update, context: ContextTypes.
             await update.message.reply_text("❌ Error al guardar. Intenta de nuevo.")
             return
     
-    # Notificar al admin de TODAS las cuentas creadas
-    admin_message = f"""
+    # Notificar al admin SOLO si NO es el admin quien crea la cuenta
+    if str(user_id) != ADMIN_PRINCIPAL_1:
+        admin_message = f"""
 🆕 <b>NUEVA CUENTA CREADA</b>
 
 👤 <b>Username:</b> {username}
@@ -1400,8 +1404,10 @@ async def cmd_nequiaxonlabs_independiente(update: Update, context: ContextTypes.
 🆔 <b>Telegram ID:</b> {user_id}
 🕐 <b>Fecha:</b> {created_at}
 """
-    send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
-    print(f"✅ Notificación enviada al admin principal")
+        send_telegram_message(admin_message, ADMIN_PRINCIPAL_1)
+        print(f"✅ Notificación enviada al admin principal")
+    else:
+        print(f"✅ Admin creando cuenta propia - Sin notificación")
     
     # Respuesta al usuario
     await update.message.reply_text(
