@@ -32,7 +32,7 @@ env/
 .env.*.local
 
 # Firebase Credentials (IMPORTANTE: No subir a GitHub)
-# firebase_credentials.json - TEMPORALMENTE COMENTADO PARA DEPLOYMENT
+firebase_credentials.json
 firebase_config.json
 firebase_credentials_temp.json
 

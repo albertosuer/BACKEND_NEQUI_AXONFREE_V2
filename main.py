@@ -1240,10 +1240,10 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Arroba: <b>@{username}</b>\n\n"
         f"📋 <b>PASO 2 - COMPLETA TU CUENTA</b>\n\n"
         f"Envía el comando así:\n"
-        f"<code>/nequiaxonlabs numero pin saldo</code>\n\n"
+        f"<code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
         f"📌 <b>Ejemplo:</b>\n"
-        f"<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
-        f"⚠️ Número: 10 dígitos | PIN: 4 dígitos",
+        f"<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>\n\n"
+        f"⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: como quieras",
         parse_mode='HTML'
     )
     
@@ -1272,23 +1272,23 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(
             "❌ <b>COMANDO INCORRECTO</b>\n\n"
             "Debes usar el comando:\n"
-            "<code>/nequiaxonlabs numero pin saldo</code>\n\n"
+            "<code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
             "📌 Ejemplo:\n"
-            "<code>/nequiaxonlabs 3001234567 0515 500000</code>",
+            "<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>",
             parse_mode='HTML'
         )
         return COMPLETE_ACCOUNT_STEP
     
     # Extraer argumentos del comando
-    parts = update.message.text.split()
+    parts = update.message.text.split(maxsplit=4)  # Dividir en máximo 5 partes
     
-    if len(parts) != 4:  # /nequiaxonlabs + 3 argumentos
+    if len(parts) < 5:  # /nequiaxonlabs + 4 argumentos mínimo
         await update.message.reply_text(
             "❌ <b>FORMATO INCORRECTO</b>\n\n"
-            "Usa: <code>/nequiaxonlabs numero pin saldo</code>\n\n"
+            "Usa: <code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
             "📌 Ejemplo:\n"
-            "<code>/nequiaxonlabs 3001234567 0515 500000</code>\n\n"
-            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Saldo: solo números",
+            "<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>\n\n"
+            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: como quieras",
             parse_mode='HTML'
         )
         return COMPLETE_ACCOUNT_STEP
@@ -1296,8 +1296,9 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     phone = parts[1].strip()
     pin = parts[2].strip()
     saldo_text = parts[3].strip().replace('.', '').replace(',', '')
+    name = parts[4].strip()  # El nombre puede tener espacios
     
-    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}")
+    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}, Nombre: {name}")
     
     if not phone.isdigit() or len(phone) != 10:
         await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
@@ -1309,6 +1310,10 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     
     if not saldo_text.isdigit():
         await update.message.reply_text("❌ Saldo inválido. Solo números.")
+        return COMPLETE_ACCOUNT_STEP
+    
+    if len(name) < 2:
+        await update.message.reply_text("❌ Nombre inválido. Debe tener al menos 2 caracteres.")
         return COMPLETE_ACCOUNT_STEP
     
     # Usar el username guardado del paso anterior
@@ -1342,7 +1347,7 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
             # Guardar en la colección 'users' con el NÚMERO como ID (como espera la app)
             print(f"💾 Creando en 'users' con ID: {phone}")
             user_doc_data = {
-                'name': username,
+                'name': name,  # Usar el nombre proporcionado por el usuario
                 'pin': str(pin),
                 'saldo': str(saldo),
                 'isActive': True,
@@ -1379,7 +1384,8 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
         admin_message = f"""
 🆕 <b>NUEVA CUENTA CREADA</b>
 
-👤 <b>Username:</b> {username}
+👤 <b>Nombre:</b> {name}
+👤 <b>Username Telegram:</b> @{username}
 📱 <b>Teléfono:</b> {phone}
 🔐 <b>PIN:</b> {pin}
 💰 <b>Saldo:</b> ${saldo:,}
@@ -2677,6 +2683,87 @@ async def cmd_saldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("❌ Número no encontrado.")
 
+async def cmd_cambiarnombre(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Usuario cambia el nombre de su cuenta"""
+    global db
+    user_id = update.effective_user.id
+    
+    if not bot_active and not is_admin(user_id):
+        await update.message.reply_text(mensaje_bot_desactivado(), parse_mode='HTML')
+        return
+    
+    if not context.args or len(context.args) < 2:
+        await update.message.reply_text(
+            "✏️ <b>CAMBIAR NOMBRE</b>\n\n"
+            "Usa: <code>/cambiarnombre numero NuevoNombre</code>\n\n"
+            "📌 Ejemplo:\n"
+            "<code>/cambiarnombre 3001234567 Juan Perez</code>\n\n"
+            "⚠️ Respeta mayúsculas y minúsculas",
+            parse_mode='HTML'
+        )
+        return
+    
+    phone = context.args[0].strip()
+    nuevo_nombre = ' '.join(context.args[1:]).strip()  # Unir todos los argumentos después del número
+    
+    if not phone.isdigit() or len(phone) != 10:
+        await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
+        return
+    
+    if len(nuevo_nombre) < 2:
+        await update.message.reply_text("❌ Nombre inválido. Debe tener al menos 2 caracteres.")
+        return
+    
+    if db:
+        try:
+            doc = db.collection('users').document(phone).get()
+            if doc.exists:
+                data = doc.to_dict()
+                nombre_anterior = data.get('name', 'N/A')
+                created_by = data.get('created_by', None)
+                
+                # Verificar que el usuario sea el creador de la cuenta o sea admin
+                if created_by != user_id and not is_admin(user_id):
+                    await update.message.reply_text(
+                        "❌ <b>ACCESO DENEGADO</b>\n\n"
+                        "Solo puedes cambiar el nombre de cuentas que tú creaste.",
+                        parse_mode='HTML'
+                    )
+                    return
+                
+                # Actualizar el nombre
+                db.collection('users').document(phone).update({
+                    'name': nuevo_nombre
+                })
+                
+                await update.message.reply_text(
+                    f"✅ <b>NOMBRE ACTUALIZADO</b>\n\n"
+                    f"📱 Número: <code>{phone}</code>\n"
+                    f"👤 Nombre anterior: {nombre_anterior}\n"
+                    f"✏️ Nombre nuevo: <b>{nuevo_nombre}</b>\n\n"
+                    f"🎉 El cambio se verá reflejado en la app.",
+                    parse_mode='HTML'
+                )
+                
+                print(f"✅ Usuario {user_id} cambió nombre de {phone}: '{nombre_anterior}' → '{nuevo_nombre}'")
+            else:
+                await update.message.reply_text(
+                    "❌ <b>NÚMERO NO ENCONTRADO</b>\n\n"
+                    f"El número <code>{phone}</code> no existe en la base de datos.",
+                    parse_mode='HTML'
+                )
+        except Exception as e:
+            print(f"❌ Error cambiando nombre: {e}")
+            import traceback
+            traceback.print_exc()
+            await update.message.reply_text(
+                "❌ <b>ERROR</b>\n\n"
+                "Hubo un error al cambiar el nombre. Intenta de nuevo.",
+                parse_mode='HTML'
+            )
+    else:
+        await update.message.reply_text("❌ Error de conexión con Firebase.")
+
 async def cmd_agregarsaldo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Solo admin - Agregar saldo a un usuario"""
     global db
@@ -3911,6 +3998,7 @@ def main():
     application.add_handler(CommandHandler('usuarios', cmd_usuarios))
     application.add_handler(CommandHandler('eliminaruser', cmd_eliminaruser))  # VIPs pueden eliminar sus propios usuarios
     application.add_handler(CommandHandler('saldo', cmd_saldo))
+    application.add_handler(CommandHandler('cambiarnombre', cmd_cambiarnombre))  # Cambiar nombre de cuenta
     application.add_handler(CommandHandler('agregarsaldo', cmd_agregarsaldo))
     application.add_handler(CommandHandler('recargar', cmd_recargar))
     application.add_handler(CommandHandler('recargasgratis', cmd_recargasgratis))
