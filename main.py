@@ -1240,10 +1240,11 @@ async def get_username_step(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ Arroba: <b>@{username}</b>\n\n"
         f"📋 <b>PASO 2 - COMPLETA TU CUENTA</b>\n\n"
         f"Envía el comando así:\n"
-        f"<code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
-        f"📌 <b>Ejemplo:</b>\n"
+        f"<code>/nequiaxonlabs numero pin saldo [nombre]</code>\n\n"
+        f"📌 <b>Ejemplos:</b>\n"
+        f"<code>/nequiaxonlabs 3001234567 0515 500000</code>\n"
         f"<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>\n\n"
-        f"⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: como quieras",
+        f"⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: opcional",
         parse_mode='HTML'
     )
     
@@ -1272,8 +1273,9 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
         await update.message.reply_text(
             "❌ <b>COMANDO INCORRECTO</b>\n\n"
             "Debes usar el comando:\n"
-            "<code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
-            "📌 Ejemplo:\n"
+            "<code>/nequiaxonlabs numero pin saldo [nombre]</code>\n\n"
+            "📌 Ejemplos:\n"
+            "<code>/nequiaxonlabs 3001234567 0515 500000</code>\n"
             "<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>",
             parse_mode='HTML'
         )
@@ -1282,13 +1284,14 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     # Extraer argumentos del comando
     parts = update.message.text.split(maxsplit=4)  # Dividir en máximo 5 partes
     
-    if len(parts) < 5:  # /nequiaxonlabs + 4 argumentos mínimo
+    if len(parts) < 4:  # /nequiaxonlabs + 3 argumentos mínimo (nombre es opcional)
         await update.message.reply_text(
             "❌ <b>FORMATO INCORRECTO</b>\n\n"
-            "Usa: <code>/nequiaxonlabs numero pin saldo nombre</code>\n\n"
-            "📌 Ejemplo:\n"
+            "Usa: <code>/nequiaxonlabs numero pin saldo [nombre]</code>\n\n"
+            "📌 Ejemplos:\n"
+            "<code>/nequiaxonlabs 3001234567 0515 500000</code>\n"
             "<code>/nequiaxonlabs 3001234567 0515 500000 Juan Perez</code>\n\n"
-            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: como quieras",
+            "⚠️ Número: 10 dígitos | PIN: 4 dígitos | Nombre: opcional",
             parse_mode='HTML'
         )
         return COMPLETE_ACCOUNT_STEP
@@ -1296,9 +1299,9 @@ async def complete_account_step(update: Update, context: ContextTypes.DEFAULT_TY
     phone = parts[1].strip()
     pin = parts[2].strip()
     saldo_text = parts[3].strip().replace('.', '').replace(',', '')
-    name = parts[4].strip()  # El nombre puede tener espacios
+    name = parts[4].strip() if len(parts) > 4 else ""  # Nombre opcional, vacío si no se proporciona
     
-    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}, Nombre: {name}")
+    print(f"📱 Usuario {user_id} - Phone: {phone}, PIN: {pin}, Saldo: {saldo_text}, Nombre: '{name}'")
     
     if not phone.isdigit() or len(phone) != 10:
         await update.message.reply_text("❌ Número inválido. Debe tener 10 dígitos.")
